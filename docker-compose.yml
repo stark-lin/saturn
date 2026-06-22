@@ -1,0 +1,31 @@
+# This Compose file runs Saturn with PostgreSQL, Redis, and local file storage for development.
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - objects-data:/app/objects
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: saturn
+      POSTGRES_USER: saturn
+      POSTGRES_PASSWORD: saturn
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:
+  objects-data:

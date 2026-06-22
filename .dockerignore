@@ -1,0 +1,17 @@
+.git
+.github
+.kagent
+.env
+.env.*
+config.json
+objects
+bin
+build
+dist
+tmp
+coverage.out
+coverage.html
+docs
+scripts
+*.log
+docker-compose.override.yml

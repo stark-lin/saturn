@@ -1,0 +1,51 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+config.json
+!docker/config.json
+config.local.json
+deploy/*.env
+!deploy/*.env.example
+
+# Go build and test outputs
+/bin/
+/build/
+/dist/
+/tmp/
+*.test
+*.out
+*.prof
+coverage.out
+coverage.html
+
+# Runtime data, uploads, and generated local state
+/data/
+/var/
+/storage/
+/uploads/
+/backups/
+*.log
+
+# Frontend dependencies and generated assets
+node_modules/
+web/static/dist/
+
+# Docker local overrides
+docker-compose.override.yml
+deploy/docker-compose.override.yml
+
+#objects
+objects/
+/objects/
+.kagent/
+/.kagent

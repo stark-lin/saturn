@@ -1,0 +1,91 @@
+# This file configures sqlc generation for Saturn repository queries.
+version: "2"
+sql:
+  - name: "auth"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/platform/auth/queries"
+    gen:
+      go:
+        package: "authsqlc"
+        out: "internal/platform/auth/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "accounting"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/accounting/queries"
+    gen:
+      go:
+        package: "accountingsqlc"
+        out: "internal/accounting/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "notes"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/notes/queries"
+    gen:
+      go:
+        package: "notessqlc"
+        out: "internal/notes/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "files"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/files/queries"
+    gen:
+      go:
+        package: "filessqlc"
+        out: "internal/files/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "llm"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/llm/queries"
+    gen:
+      go:
+        package: "llmsqlc"
+        out: "internal/llm/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "audit"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/platform/audit/queries"
+    gen:
+      go:
+        package: "auditsqlc"
+        out: "internal/platform/audit/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "ref"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/platform/ref/queries"
+    gen:
+      go:
+        package: "refsqlc"
+        out: "internal/platform/ref/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true
+  - name: "storage"
+    engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/platform/storage/queries"
+    gen:
+      go:
+        package: "storagesqlc"
+        out: "internal/platform/storage/sqlc"
+        sql_package: "database/sql"
+        emit_sql_as_comment: true
+        omit_unused_structs: true

@@ -1,0 +1,36 @@
+{
+  "http": {
+    "addr": ":8080",
+    "trusted_proxy_cidrs": []
+  },
+  "web": {
+    "root": "/app/web/src"
+  },
+  "database": {
+    "url": "postgres://saturn:saturn@postgres:5432/saturn?sslmode=disable",
+    "drop_tables": false
+  },
+  "redis": {
+    "addr": "redis:6379"
+  },
+  "auth": {
+    "jwt_secret": "development-only-change-this-jwt-secret",
+    "token_ttl_minutes": 480
+  },
+  "storage": {
+    "root": "/app/objects"
+  },
+  "llm": {
+    "enabled": false,
+    "api_key": "",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "model": "gpt-4o-mini",
+    "rate_limit_per_minute": 60,
+    "max_tokens": 1024,
+    "worker_count": 1,
+    "timeout_seconds": 60
+  },
+  "logging": {
+    "level": "info"
+  }
+}

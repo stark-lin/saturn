@@ -1,0 +1,147 @@
+# This file defines architecture dependency rules for arch-go.
+version: 1
+threshold:
+  compliance: 100
+  coverage: 100
+dependenciesRules:
+  - package: "**.cmd.server"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.app"
+        - "**.internal.app.**"
+
+  - package: "**.internal.app"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.app"
+        - "**.internal.app.**"
+        - "**.internal.accounting"
+        - "**.internal.accounting.**"
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.llm"
+        - "**.internal.llm.**"
+        - "**.internal.notes"
+        - "**.internal.notes.**"
+        - "**.internal.settings"
+        - "**.internal.settings.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.accounting"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.accounting"
+        - "**.internal.accounting.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.accounting.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.accounting"
+        - "**.internal.accounting.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.calendar"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.calendar.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.files"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.files.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.llm"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.llm"
+        - "**.internal.llm.**"
+        - "**.internal.accounting"
+        - "**.internal.accounting.**"
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.notes"
+        - "**.internal.notes.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.llm.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.llm"
+        - "**.internal.llm.**"
+        - "**.internal.accounting"
+        - "**.internal.accounting.**"
+        - "**.internal.calendar"
+        - "**.internal.calendar.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.notes"
+        - "**.internal.notes.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.notes"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.notes"
+        - "**.internal.notes.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.notes.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.notes"
+        - "**.internal.notes.**"
+        - "**.internal.files"
+        - "**.internal.files.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.settings"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.settings"
+        - "**.internal.settings.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.settings.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.settings"
+        - "**.internal.settings.**"
+        - "**.internal.platform.**"
+
+  - package: "**.internal.platform.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.platform.**"
