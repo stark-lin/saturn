@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,11 +39,29 @@ func TestLoadGeneratesConfigFromEnvironment(t *testing.T) {
 	if cfg.Redis.Addr != "127.0.0.1:6379" {
 		t.Fatalf("expected default redis addr, got %q", cfg.Redis.Addr)
 	}
-	if cfg.Auth.JWTSecret == "" || cfg.Auth.TokenTTLMinutes != 480 {
-		t.Fatalf("expected default auth config, got %#v", cfg.Auth)
+	if cfg.Auth.JWTSecret == "" {
+		t.Fatal("expected generated jwt secret to be non-empty")
+	}
+	if cfg.Auth.JWTSecret == developmentJWTSecret {
+		t.Fatalf("expected generated jwt secret, got development default %q", cfg.Auth.JWTSecret)
+	}
+	if cfg.Auth.TokenTTLMinutes != 480 {
+		t.Fatalf("expected default auth token ttl, got %d", cfg.Auth.TokenTTLMinutes)
 	}
 	if cfg.LLM.WorkerCount != 3 {
 		t.Fatalf("expected env llm worker count, got %d", cfg.LLM.WorkerCount)
+	}
+
+	generatedContent, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+	var generated Config
+	if err := json.Unmarshal(generatedContent, &generated); err != nil {
+		t.Fatalf("unmarshal generated config: %v", err)
+	}
+	if generated.Auth.JWTSecret != cfg.Auth.JWTSecret {
+		t.Fatalf("persisted jwt secret %q does not match loaded secret %q", generated.Auth.JWTSecret, cfg.Auth.JWTSecret)
 	}
 
 	info, err := os.Stat(path)

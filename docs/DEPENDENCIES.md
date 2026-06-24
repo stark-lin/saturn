@@ -135,7 +135,7 @@ Startup dependency readiness is configured in the `startup` section:
 
 At process startup, PostgreSQL and Redis readiness checks run concurrently. The main startup flow blocks until both are ready, then runs migrations, wires services, and only then starts the HTTP server and workers. If either dependency remains unavailable past `startup.readiness_timeout_seconds`, startup fails fast without entering a degraded mode.
 
-Authentication configuration includes the JWT signature secret and token validity in minutes. The repository template and Docker development config use a development secret; actual deployments must replace `auth.jwt_secret`. If an existing config file is missing the authentication configuration, startup will fail; this section must be explicitly provided.
+Authentication configuration includes the JWT signature secret and token validity in minutes. The repository template and Docker development config still use a development secret, but when `config.json` does not exist the startup path generates a new config file with a random `auth.jwt_secret` and writes it to disk. If an existing config file is present, `auth.jwt_secret` and `auth.token_ttl_minutes` still must be provided explicitly.
 
 LLM configuration is located in the `llm` section:
 

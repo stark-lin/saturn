@@ -50,7 +50,7 @@ Audit logs require every HTTP source event to have a `source_ip`. It defaults to
 
 Do not configure the public internet or arbitrary source subnets as trusted proxies, otherwise clients can spoof the audit source IP.
 
-The development configuration provides a default JWT secret and injects an `admin/admin` `superuser` login account after schema creation, facilitating local testing. The JWT secret and default administrator password must be replaced prior to actual deployment.
+The development configuration provides a default JWT secret and injects an `admin/admin` `superuser` login account after schema creation, facilitating local testing. If `/app/config.json` is absent on startup, Saturn generates one with a random JWT secret and writes it to disk; production deployments should mount a persistent config at that path rather than relying on regeneration. The JWT secret and default administrator password must be replaced prior to actual deployment.
 
 During the development phase, when the application starts, it will automatically execute `migrations/*.sql` to initialize the PostgreSQL schema. Currently, formal migration version tables are not maintained, and production-style incremental migrations are not performed. If schema conflicts occur during the development phase, the handling method is to set `database.drop_tables=true` to drop old tables and rebuild; do not place valuable data in a development database where this option will be enabled.
 

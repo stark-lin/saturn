@@ -3,6 +3,8 @@ package config
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,7 @@ import (
 
 const DefaultPath = "config.json"
 const defaultReadinessTimeoutSeconds = 30
+const developmentJWTSecret = "development-only-change-this-jwt-secret"
 
 func Load(path string) (Config, error) {
 	if strings.TrimSpace(path) == "" {
@@ -30,7 +33,10 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
 
-	cfg := Default()
+	cfg, err := generatedDefaultConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	if err := applyEnvironment(&cfg); err != nil {
 		return Config{}, err
 	}
@@ -79,6 +85,16 @@ func Default() Config {
 			Level: "info",
 		},
 	}
+}
+
+func generatedDefaultConfig() (Config, error) {
+	cfg := Default()
+	secret, err := randomJWTSecret()
+	if err != nil {
+		return Config{}, fmt.Errorf("generate auth.jwt_secret: %w", err)
+	}
+	cfg.Auth.JWTSecret = secret
+	return cfg, nil
 }
 
 func parseConfig(path string, content []byte) (Config, error) {
@@ -269,7 +285,15 @@ func validate(cfg Config) error {
 
 func defaultAuth() AuthConfig {
 	return AuthConfig{
-		JWTSecret:       "development-only-change-this-jwt-secret",
+		JWTSecret:       developmentJWTSecret,
 		TokenTTLMinutes: 480,
 	}
+}
+
+func randomJWTSecret() (string, error) {
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(secret[:]), nil
 }
