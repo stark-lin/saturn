@@ -80,6 +80,12 @@ func TestServiceCreatesCollectionAndFileWithHashes(t *testing.T) {
 	if string(storage.objects[file.ObjectKey]) != "hello" {
 		t.Fatalf("stored object = %q", storage.objects[file.ObjectKey])
 	}
+	if _, exists := storage.objects["staging/FIL-00000002/blob"]; exists {
+		t.Fatalf("staging object was not promoted away: %#v", storage.objects)
+	}
+	if storage.stagedKey != "staging/FIL-00000002/blob" || storage.promotedFrom != "staging/FIL-00000002/blob" || storage.promotedTo != file.ObjectKey {
+		t.Fatalf("stage/promote = staged %q from %q to %q", storage.stagedKey, storage.promotedFrom, storage.promotedTo)
+	}
 	if references.registrations[0].ObjectType != ref.ObjectTypeFileCollection ||
 		references.registrations[1].ObjectType != ref.ObjectTypeFile {
 		t.Fatalf("reference registrations = %#v", references.registrations)
@@ -92,6 +98,64 @@ func TestServiceCreatesCollectionAndFileWithHashes(t *testing.T) {
 		len(references.registrations[1].Tags) != 2 ||
 		references.registrations[1].Tags[1] != "pdf" {
 		t.Fatalf("registration tags = %#v", references.registrations)
+	}
+}
+
+func TestServiceCreateFileCleansStagingWhenTransactionFails(t *testing.T) {
+	service, repo, _, audits, storage := newTestService()
+	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	repo.createFileErr = errors.New("create file failed")
+
+	_, err = service.CreateFile(context.Background(), actor, CreateFileInput{
+		CollectionRefCode: collection.RefCode,
+		OriginalName:      "receipt.txt",
+		SizeBytes:         int64(len("hello")),
+		Body:              bytes.NewBufferString("hello"),
+	})
+	if !errors.Is(err, repo.createFileErr) {
+		t.Fatalf("create file error = %v, want create file failure", err)
+	}
+	if _, exists := storage.objects["staging/FIL-00000002/blob"]; exists {
+		t.Fatalf("staging object still exists: %#v", storage.objects)
+	}
+	if storage.deleted["staging/FIL-00000002/blob"] != true || storage.deleted["FIL-00000002/blob"] != true {
+		t.Fatalf("deleted objects = %#v", storage.deleted)
+	}
+	if len(audits.successes) != 1 || len(audits.standalones) != 1 || audits.standalones[0].Action != audit.ActionCreate {
+		t.Fatalf("audits = successes %#v standalones %#v", audits.successes, audits.standalones)
+	}
+}
+
+func TestServiceCreateFileCleansFinalWhenPromoteFailsAfterMove(t *testing.T) {
+	service, _, _, audits, storage := newTestService()
+	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	storage.promoteErrAfterMove = errors.New("promote metadata failed")
+
+	_, err = service.CreateFile(context.Background(), actor, CreateFileInput{
+		CollectionRefCode: collection.RefCode,
+		OriginalName:      "receipt.txt",
+		SizeBytes:         int64(len("hello")),
+		Body:              bytes.NewBufferString("hello"),
+	})
+	if !errors.Is(err, storage.promoteErrAfterMove) {
+		t.Fatalf("create file error = %v, want promote failure", err)
+	}
+	if _, exists := storage.objects["FIL-00000002/blob"]; exists {
+		t.Fatalf("final object still exists after cleanup: %#v", storage.objects)
+	}
+	if storage.deleted["staging/FIL-00000002/blob"] != true || storage.deleted["FIL-00000002/blob"] != true {
+		t.Fatalf("deleted objects = %#v", storage.deleted)
+	}
+	if len(audits.successes) != 1 || len(audits.standalones) != 1 || audits.standalones[0].Result != audit.ResultFailed {
+		t.Fatalf("audits = successes %#v standalones %#v", audits.successes, audits.standalones)
 	}
 }
 
@@ -321,6 +385,7 @@ type fakeRepository struct {
 	collections         map[int64]Collection
 	files               map[int64]File
 	lockedCollectionRef string
+	createFileErr       error
 }
 
 func (r *fakeRepository) ListCollections(_ context.Context, _ auth.Scope, query CollectionQuery) (CollectionPage, error) {
@@ -394,6 +459,9 @@ func (r *fakeRepository) ListFiles(_ context.Context, _ auth.Scope, query FileQu
 }
 
 func (r *fakeRepository) CreateFile(_ context.Context, ownerID int64, collectionID int64, input CreateFileInput, stored StoredFile) (File, error) {
+	if r.createFileErr != nil {
+		return File{}, r.createFileErr
+	}
 	r.nextID++
 	file := File{
 		ID: r.nextID, OwnerID: ownerID, CollectionID: collectionID, CollectionRefCode: input.CollectionRefCode,
@@ -498,11 +566,15 @@ func (a *fakeAudits) RecordStandalone(_ context.Context, event audit.Event) erro
 }
 
 type fakeStorage struct {
-	objects map[string][]byte
-	deleted map[string]bool
+	objects             map[string][]byte
+	deleted             map[string]bool
+	stagedKey           string
+	promotedFrom        string
+	promotedTo          string
+	promoteErrAfterMove error
 }
 
-func (s *fakeStorage) Put(_ context.Context, object storage.Object, body io.Reader) (storage.Object, error) {
+func (s *fakeStorage) Stage(_ context.Context, object storage.Object, body io.Reader) (storage.Object, error) {
 	content, err := io.ReadAll(body)
 	if err != nil {
 		return storage.Object{}, err
@@ -513,7 +585,26 @@ func (s *fakeStorage) Put(_ context.Context, object storage.Object, body io.Read
 	object.SHA256 = sha256Hex(string(content))
 	object.BLAKE3 = blake3Hex(string(content))
 	s.objects[object.Key] = content
+	s.stagedKey = object.Key
 	return object, nil
+}
+
+func (s *fakeStorage) Promote(_ context.Context, staged storage.Object, final storage.Object) (storage.Object, error) {
+	content, exists := s.objects[staged.Key]
+	if !exists {
+		return storage.Object{}, ErrFileNotFound
+	}
+	delete(s.objects, staged.Key)
+	s.objects[final.Key] = content
+	s.promotedFrom = staged.Key
+	s.promotedTo = final.Key
+	final.Size = staged.Size
+	final.SHA256 = staged.SHA256
+	final.BLAKE3 = staged.BLAKE3
+	if s.promoteErrAfterMove != nil {
+		return storage.Object{}, s.promoteErrAfterMove
+	}
+	return final, nil
 }
 
 func (s *fakeStorage) Get(_ context.Context, key string) (io.ReadCloser, error) {

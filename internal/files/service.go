@@ -39,7 +39,8 @@ type AuditService interface {
 }
 
 type StorageService interface {
-	Put(ctx context.Context, object storage.Object, body io.Reader) (storage.Object, error)
+	Stage(ctx context.Context, object storage.Object, body io.Reader) (storage.Object, error)
+	Promote(ctx context.Context, staged storage.Object, final storage.Object) (storage.Object, error)
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
 	PathForKey(key string) (string, error)
@@ -216,7 +217,25 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 		return File{}, err
 	}
 	objectKey := fmt.Sprintf("%s/blob", refCode)
-	var objectStored bool
+	stagingKey := fmt.Sprintf("staging/%s/blob", refCode)
+	stagingPath, err := s.storage.PathForKey(stagingKey)
+	if err != nil {
+		return File{}, s.recordWriteFailure(ctx, actor, audit.ActionCreate, refCode, err)
+	}
+	collection, err := s.repo.FindCollectionByRefCode(ctx, auth.ScopeForPrincipal(actor), input.CollectionRefCode)
+	if err != nil {
+		return File{}, s.recordWriteFailure(ctx, actor, audit.ActionCreate, refCode, err)
+	}
+	if err := s.can(actor, auth.ActionUpdate, "file_collection", collection.ID, collection.OwnerID); err != nil {
+		return File{}, s.recordWriteFailure(ctx, actor, audit.ActionCreate, refCode, err)
+	}
+	stagedObject, err := s.storage.Stage(ctx, storage.Object{
+		Key: stagingKey, Path: stagingPath, Size: input.SizeBytes,
+	}, input.Body)
+	if err != nil {
+		s.cleanupUploadObjects(stagingKey, objectKey)
+		return File{}, s.recordWriteFailure(ctx, actor, audit.ActionCreate, refCode, err)
+	}
 	var created File
 	err = s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		collection, err := s.repo.LockCollectionByRefCode(txCtx, input.CollectionRefCode)
@@ -230,15 +249,8 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 		if err != nil {
 			return err
 		}
-		object, err := s.storage.Put(txCtx, storage.Object{
-			Key: objectKey, Path: path, Size: input.SizeBytes,
-		}, input.Body)
-		if err != nil {
-			return err
-		}
-		objectStored = true
 		file, err := s.repo.CreateFile(txCtx, collection.OwnerID, collection.ID, input, StoredFile{
-			ObjectKey: object.Key, SizeBytes: object.Size, SHA256: object.SHA256, BLAKE3: object.BLAKE3,
+			ObjectKey: objectKey, SizeBytes: stagedObject.Size, SHA256: stagedObject.SHA256, BLAKE3: stagedObject.BLAKE3,
 		})
 		if err != nil {
 			return err
@@ -248,6 +260,9 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 			ObjectID: file.ID, Title: file.OriginalName, Tags: input.Tags, Status: FileStatusActive,
 		})
 		if err != nil {
+			return err
+		}
+		if _, err := s.storage.Promote(txCtx, stagedObject, storage.Object{Key: objectKey, Path: path}); err != nil {
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
@@ -265,9 +280,7 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 		return nil
 	})
 	if err != nil {
-		if objectStored {
-			_ = s.storage.Delete(context.Background(), objectKey)
-		}
+		s.cleanupUploadObjects(stagingKey, objectKey)
 		return File{}, s.recordWriteFailure(ctx, actor, audit.ActionCreate, refCode, err)
 	}
 	return created, nil
@@ -383,6 +396,11 @@ func (s *Service) deleteStoredObjects(ctx context.Context, objectKeys []string) 
 		}
 	}
 	return nil
+}
+
+func (s *Service) cleanupUploadObjects(stagingKey string, objectKey string) {
+	_ = s.storage.Delete(context.Background(), stagingKey)
+	_ = s.storage.Delete(context.Background(), objectKey)
 }
 
 func stageVerifiedDownload(body io.Reader, file File) (io.ReadCloser, error) {

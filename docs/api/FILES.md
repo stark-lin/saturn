@@ -92,7 +92,7 @@ Form fields:
 | `file` | yes | Uploaded file content; filename comes from the multipart file header |
 | `tags` | no | Comma-separated tags, e.g., `tax,receipt`; trimmed, empty values removed, and deduplicated before associating with the File |
 
-The server saves the blob to:
+The final committed blob key remains:
 
 ```text
 ./objects/{FILE_REFCODE}/blob
@@ -104,7 +104,17 @@ For example:
 ./objects/FIL-00000002/blob
 ```
 
-During the upload write, the server calculates `sha256` and `blake3`, and writes them to the file metadata. Successfully returns `201 Created`:
+Upload content is first written outside the business transaction to a staging key:
+
+```text
+./objects/staging/{FILE_REFCODE}/blob
+```
+
+During the staging write, the server validates the declared size and calculates `sha256` and `blake3`. The database transaction then locks the target Collection, rechecks authorization, creates the File record, registers the ObjectRef, promotes the staged blob to the final key with a local FS rename, records final storage metadata, and writes the success audit. If any step fails, the service best-effort deletes both the staging key and final key.
+
+The transaction does not stream the upload body; it only contains metadata writes and the short promote operation.
+
+Successfully returns `201 Created`:
 
 ```json
 {
