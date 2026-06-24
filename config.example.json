@@ -6,6 +6,9 @@
   "web": {
     "root": "web/src"
   },
+  "startup": {
+    "readiness_timeout_seconds": 30
+  },
   "database": {
     "url": "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable",
     "drop_tables": false

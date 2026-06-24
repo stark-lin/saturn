@@ -21,9 +21,13 @@ local filesystem storage volume
 
 Redis is a required component; a no-Redis mode is not provided.
 
+`docker-compose.yml` uses `depends_on` for container startup order only. Dependency readiness is enforced by the application startup wait described below, so the app container may start before PostgreSQL or Redis accepts connections, then block until both are ready or the configured readiness timeout expires.
+
 Files default to using the local filesystem runtime backend. The Docker development environment mounts `/app/objects` to the `objects-data` volume; local development defaults to writing to `./objects`.
 
 Application runtime configuration defaults to coming from `config.json`, or it can be specified via the `-config path/to/config.json` path. If `config.json` is missing during local development, the service will generate a local configuration file using built-in defaults and current `SATURN_*` environment variables upon startup; once generated, environment variables will no longer overwrite existing configurations.
+
+`startup.readiness_timeout_seconds` defaults to `30`. During startup the application waits for PostgreSQL and Redis concurrently, but the main startup flow blocks until both dependencies are ready. The wait is bounded by this timeout; if either dependency is still unavailable when the timeout expires, startup fails fast and the HTTP server and workers are not started.
 
 `database.drop_tables` defaults to `false`. When the service starts, if the target database has no Saturn tables, it will execute `migrations/*.sql` to initialize the schema; if the target database already contains the complete set of Saturn tables, it will retain the existing data and skip recreation; if only partial Saturn tables exist, it will fail fast, requiring a switch to an empty database or explicitly setting `database.drop_tables=true`. When set to `true`, startup will first drop all regular tables under the current PostgreSQL schema, and then execute migrations to rebuild the development schema.
 

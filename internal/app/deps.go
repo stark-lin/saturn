@@ -39,34 +39,32 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 	}
 
 	log := logger.New(os.Stdout, cfg.Logging.Level)
-	database, err := platformdb.Open(ctx, cfg.Database)
+	platformredis.ConfigureLogger(log)
+	readyDependencies, err := waitForStartupDependencies(ctx, cfg, log)
 	if err != nil {
 		return Dependencies{}, err
 	}
+	database := readyDependencies.Database
+	redisClient := readyDependencies.Redis
+
 	if err := platformdb.BootstrapSchema(ctx, database.DB, migrationsDir, platformdb.BootstrapOptions{DropTables: cfg.Database.DropTables}); err != nil {
+		_ = redisClient.Close()
 		_ = database.Close()
 		return Dependencies{}, fmt.Errorf("bootstrap database schema: %w", err)
 	}
 	authRepo := auth.NewSQLRepository(database.DB)
 	if err := auth.EnsureDevelopmentAdmin(ctx, authRepo); err != nil {
+		_ = redisClient.Close()
 		_ = database.Close()
 		return Dependencies{}, err
 	}
 
-	platformredis.ConfigureLogger(log)
-	redisClient, err := platformredis.Open(ctx, cfg.Redis)
-	if err != nil {
-		_ = database.Close()
-		log.Error("redis dependency unavailable", "addr", cfg.Redis.Addr, "error", err)
-		return Dependencies{}, fmt.Errorf("redis dependency unavailable at %s; start Redis or update redis.addr in config.json: %w", cfg.Redis.Addr, err)
-	}
 	tokenManager, err := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.TokenTTLMinutes)*time.Minute)
 	if err != nil {
 		_ = redisClient.Close()
 		_ = database.Close()
 		return Dependencies{}, fmt.Errorf("configure authentication tokens: %w", err)
 	}
-	log.Info("redis dependency ready", "addr", redisClient.Addr)
 	transactionRunner := platformdb.SQLTransactionRunner{DB: database.DB}
 	auditService := audit.NewService(audit.NewSQLRepository(database.DB), transactionRunner)
 
