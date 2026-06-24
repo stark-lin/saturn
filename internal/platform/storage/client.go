@@ -87,6 +87,30 @@ func (c *LocalFSClient) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+func (c *LocalFSClient) Promote(_ context.Context, stagedKey string, finalKey string) error {
+	stagedPath, err := c.pathForKey(stagedKey)
+	if err != nil {
+		return err
+	}
+	finalPath, err := c.pathForKey(finalKey)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(finalPath); err == nil {
+		return fmt.Errorf("promote object: destination already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("promote object: inspect destination: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o700); err != nil {
+		return fmt.Errorf("create object directory: %w", err)
+	}
+	if err := os.Rename(stagedPath, finalPath); err != nil {
+		return fmt.Errorf("promote object: %w", err)
+	}
+	_ = os.Remove(filepath.Dir(stagedPath))
+	return nil
+}
+
 func (c *LocalFSClient) PathForKey(key string) (string, error) {
 	return c.pathForKey(key)
 }

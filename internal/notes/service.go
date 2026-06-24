@@ -6,10 +6,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/stark-lin/go-proj/internal/platform/audit"
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
-	"github.com/stark-lin/go-proj/internal/platform/ref"
+	"github.com/stark-lin/saturn/internal/platform/audit"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
+	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
 var ErrDependencyUnavailable = errors.New("notes dependency is not wired")

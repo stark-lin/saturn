@@ -1,7 +1,7 @@
 // This file initializes the Notes module dependencies.
 package notes
 
-import platformdb "github.com/stark-lin/go-proj/internal/platform/db"
+import platformdb "github.com/stark-lin/saturn/internal/platform/db"
 
 type Module struct {
 	Handler *Handler

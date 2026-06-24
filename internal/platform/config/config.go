@@ -4,6 +4,7 @@ package config
 type Config struct {
 	HTTP     HTTPConfig     `json:"http"`
 	Web      WebConfig      `json:"web"`
+	Startup  StartupConfig  `json:"startup"`
 	Database DatabaseConfig `json:"database"`
 	Redis    RedisConfig    `json:"redis"`
 	Auth     AuthConfig     `json:"auth"`
@@ -19,6 +20,10 @@ type HTTPConfig struct {
 
 type WebConfig struct {
 	Root string `json:"root"`
+}
+
+type StartupConfig struct {
+	ReadinessTimeoutSeconds int `json:"readiness_timeout_seconds"`
 }
 
 type DatabaseConfig struct {

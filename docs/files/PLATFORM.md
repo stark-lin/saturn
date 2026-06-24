@@ -396,6 +396,7 @@ Responsibilities:
 ```text
 Local FS storage encapsulation
 Object read/write
+Object staging and promotion
 Object deletion
 Object metadata
 Object references

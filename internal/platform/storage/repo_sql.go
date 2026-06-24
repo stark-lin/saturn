@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
 )
 
 type SQLRepository struct {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/ref"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
 func TestHandlerMetadataReturnsReferenceJSON(t *testing.T) {

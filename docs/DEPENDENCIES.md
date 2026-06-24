@@ -52,7 +52,7 @@ DOMPurify 3.4.5     -> web/src/vendor/purify.min.js  -> /vendor/purify.min.js
 The initial code inventory fixes the first implementation stack as:
 
 ```text
-Go module: github.com/stark-lin/go-proj
+Go module: github.com/stark-lin/saturn
 Backend: Go net/http and standard library first
 Frontend: plain native HTML first
 Frontend HTTP: browser forms or minimal vanilla JavaScript fetch when required
@@ -123,7 +123,19 @@ Database configuration is located in the `database` section:
 
 `database.drop_tables` defaults to `false`. When starting with an empty database, migrations are executed to initialize the schema; if a complete Saturn schema already exists, data is preserved and recreation is skipped; only when set to `true` will startup first drop all regular tables under the current PostgreSQL schema before recreating them. This option is only suitable for local development databases.
 
-Authentication configuration includes the JWT signature secret and token validity in minutes. The repository template and Docker development config use a development secret; actual deployments must replace `auth.jwt_secret`. If an existing config file is missing the authentication configuration, startup will fail; this section must be explicitly provided.
+Startup dependency readiness is configured in the `startup` section:
+
+```json
+{
+  "startup": {
+    "readiness_timeout_seconds": 30
+  }
+}
+```
+
+At process startup, PostgreSQL and Redis readiness checks run concurrently. The main startup flow blocks until both are ready, then runs migrations, wires services, and only then starts the HTTP server and workers. If either dependency remains unavailable past `startup.readiness_timeout_seconds`, startup fails fast without entering a degraded mode.
+
+Authentication configuration includes the JWT signature secret and token validity in minutes. The repository template and Docker development config still use a development secret, but when `config.json` does not exist the startup path generates a new config file with a random `auth.jwt_secret` and writes it to disk. If an existing config file is present, `auth.jwt_secret` and `auth.token_ttl_minutes` still must be provided explicitly.
 
 LLM configuration is located in the `llm` section:
 
@@ -150,6 +162,7 @@ You can use the following when generating the config file for the first time:
 
 ```text
 SATURN_DATABASE_DROP_TABLES
+SATURN_STARTUP_READINESS_TIMEOUT_SECONDS
 SATURN_LLM_ENABLED
 SATURN_LLM_API_KEY
 SATURN_LLM_ENDPOINT

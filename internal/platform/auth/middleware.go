@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/stark-lin/go-proj/internal/platform/httpx"
+	"github.com/stark-lin/saturn/internal/platform/httpx"
 )
 
 func AuthenticateBearer(service *Service, next http.Handler) http.Handler {

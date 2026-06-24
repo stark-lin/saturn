@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	authsqlc "github.com/stark-lin/go-proj/internal/platform/auth/sqlc"
+	authsqlc "github.com/stark-lin/saturn/internal/platform/auth/sqlc"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )

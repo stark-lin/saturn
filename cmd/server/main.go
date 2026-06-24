@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/app"
+	"github.com/stark-lin/saturn/internal/app"
 )
 
 func main() {

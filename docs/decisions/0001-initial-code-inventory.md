@@ -15,7 +15,7 @@ The first code pass is an explicit scaffold/inventory phase. It creates compilab
 The initial stack is:
 
 ```text
-Go module: github.com/stark-lin/go-proj
+Go module: github.com/stark-lin/saturn
 Backend: Go net/http and standard library first
 Frontend: plain native HTML first, with minimal vanilla JavaScript only when required
 Build: no React, Vite, Node, or frontend package manager in this pass

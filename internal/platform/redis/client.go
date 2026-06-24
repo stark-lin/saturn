@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/platform/config"
+	"github.com/stark-lin/saturn/internal/platform/config"
 
 	goredis "github.com/redis/go-redis/v9"
 )

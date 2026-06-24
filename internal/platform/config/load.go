@@ -3,6 +3,8 @@ package config
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,8 @@ import (
 )
 
 const DefaultPath = "config.json"
+const defaultReadinessTimeoutSeconds = 30
+const developmentJWTSecret = "development-only-change-this-jwt-secret"
 
 func Load(path string) (Config, error) {
 	if strings.TrimSpace(path) == "" {
@@ -29,7 +33,10 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
 
-	cfg := Default()
+	cfg, err := generatedDefaultConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	if err := applyEnvironment(&cfg); err != nil {
 		return Config{}, err
 	}
@@ -50,6 +57,9 @@ func Default() Config {
 		},
 		Web: WebConfig{
 			Root: "web/src",
+		},
+		Startup: StartupConfig{
+			ReadinessTimeoutSeconds: defaultReadinessTimeoutSeconds,
 		},
 		Database: DatabaseConfig{
 			URL:        "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable",
@@ -77,6 +87,16 @@ func Default() Config {
 	}
 }
 
+func generatedDefaultConfig() (Config, error) {
+	cfg := Default()
+	secret, err := randomJWTSecret()
+	if err != nil {
+		return Config{}, fmt.Errorf("generate auth.jwt_secret: %w", err)
+	}
+	cfg.Auth.JWTSecret = secret
+	return cfg, nil
+}
+
 func parseConfig(path string, content []byte) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(content))
@@ -87,10 +107,17 @@ func parseConfig(path string, content []byte) (Config, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("parse config %q: multiple JSON values are not allowed", path)
 	}
+	applyDefaults(&cfg)
 	if err := validate(cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func applyDefaults(cfg *Config) {
+	if cfg.Startup.ReadinessTimeoutSeconds == 0 {
+		cfg.Startup.ReadinessTimeoutSeconds = defaultReadinessTimeoutSeconds
+	}
 }
 
 func writeGenerated(path string, cfg Config) error {
@@ -140,6 +167,13 @@ func applyEnvironment(cfg *Config) error {
 			return fmt.Errorf("parse SATURN_DATABASE_DROP_TABLES: %w", err)
 		}
 		cfg.Database.DropTables = parsed
+	}
+	if value := os.Getenv("SATURN_STARTUP_READINESS_TIMEOUT_SECONDS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse SATURN_STARTUP_READINESS_TIMEOUT_SECONDS: %w", err)
+		}
+		cfg.Startup.ReadinessTimeoutSeconds = parsed
 	}
 	if value := os.Getenv("SATURN_LLM_ENABLED"); value != "" {
 		parsed, err := strconv.ParseBool(value)
@@ -217,6 +251,9 @@ func validate(cfg Config) error {
 	if strings.TrimSpace(cfg.Storage.Root) == "" {
 		missingFields = append(missingFields, "storage.root")
 	}
+	if cfg.Startup.ReadinessTimeoutSeconds < 1 {
+		missingFields = append(missingFields, "startup.readiness_timeout_seconds")
+	}
 	if cfg.LLM.Enabled {
 		if strings.TrimSpace(cfg.LLM.APIKey) == "" {
 			missingFields = append(missingFields, "llm.api_key")
@@ -248,7 +285,15 @@ func validate(cfg Config) error {
 
 func defaultAuth() AuthConfig {
 	return AuthConfig{
-		JWTSecret:       "development-only-change-this-jwt-secret",
+		JWTSecret:       developmentJWTSecret,
 		TokenTTLMinutes: 480,
 	}
+}
+
+func randomJWTSecret() (string, error) {
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(secret[:]), nil
 }

@@ -1,9 +1,13 @@
+<a id="readme-en"></a>
+
 # Saturn
 
 [![CI/CD](https://github.com/stark-lin/saturn/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/stark-lin/saturn/actions/workflows/ci-cd.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 [![Go](https://img.shields.io/badge/Go-net%2Fhttp-00ADD8.svg)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](https://www.docker.com/)
+
+[English](#readme-en) | [中文](#readme-zh)
 
 Saturn is a local-first, self-hosted personal data service for notes, files, accounting, calendar planning, platform operations, and controlled LLM-assisted workflows.
 
@@ -131,6 +135,12 @@ scripts/                 development helper scripts
 docker compose up --build
 ```
 
+If you want a one-command startup without cloning the repository first, run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
+```
+
 Or use the development helper script:
 
 ```sh
@@ -167,7 +177,7 @@ password: admin
 role: superuser
 ```
 
-The default account, the JWT secret in `docker/config.json`, and the default password are for local development only. They must be changed before any real deployment.
+The default account and default password are for local development only. `docker/config.json` keeps a development JWT secret template, and if `config.json` is missing on first startup Saturn generates a new config file with a random `auth.jwt_secret`. All of them must be changed or replaced before any real deployment.
 
 ### Run the Go Server Directly
 
@@ -183,7 +193,7 @@ Or with an explicit config path:
 go run ./cmd/server -config config.json
 ```
 
-If `config.json` is missing on first startup, Saturn generates a local config file from built-in defaults and current `SATURN_*` environment variables.
+If `config.json` is missing on first startup, Saturn generates a local config file from built-in defaults and current `SATURN_*` environment variables. The generated file includes a random `auth.jwt_secret`, so keep `config.json` persistent if you want JWT sessions to survive restarts.
 
 ## Configuration
 
@@ -200,6 +210,8 @@ The repository includes two committed configuration files:
 | `config.example.json` | Host-machine development template using `localhost` PostgreSQL and `127.0.0.1:6379` Redis |
 | `docker/config.json`  | Docker runtime config using Compose service names and `/app/objects` storage              |
 
+Both committed templates keep a development JWT secret. If `config.json` is missing, Saturn bootstraps a new file with a random secret instead.
+
 Main configuration sections:
 
 | Section    | Purpose                                                |
@@ -213,7 +225,7 @@ Main configuration sections:
 | `llm`      | LLM provider, worker, timeout, and rate-limit settings |
 | `logging`  | Log level                                              |
 
-If an existing config file cannot be parsed, contains unknown fields, or misses required fields, Saturn fails fast. It does not silently fall back to environment variables or defaults.
+If an existing config file cannot be parsed, contains unknown fields, or misses required fields, Saturn fails fast. If the file is missing, Saturn bootstraps one from built-in defaults and current `SATURN_*` environment variables instead of failing.
 
 ## API Overview
 
@@ -352,12 +364,16 @@ See [LICENSE](./LICENSE) for the full license text.
 
 ---
 
+<a id="readme-zh"></a>
+
 # Saturn 中文说明
 
 [![CI/CD](https://github.com/stark-lin/saturn/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/stark-lin/saturn/actions/workflows/ci-cd.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 [![Go](https://img.shields.io/badge/Go-net%2Fhttp-00ADD8.svg)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](https://www.docker.com/)
+
+[English](#readme-en) | [中文](#readme-zh)
 
 Saturn 是一个本地优先、面向个人自托管的统一数据服务，用于管理笔记、文件、记账、日历计划、平台操作，以及受控的 LLM 辅助工作流。
 
@@ -485,6 +501,12 @@ scripts/                 development helper scripts
 docker compose up --build
 ```
 
+如果你想在不先克隆仓库的情况下直接一键启动，可以运行：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
+```
+
 也可以使用开发辅助脚本：
 
 ```sh
@@ -521,7 +543,7 @@ password: admin
 role: superuser
 ```
 
-默认账号、`docker/config.json` 中的 JWT secret 和默认密码只适合本地开发。真实部署前必须替换。
+默认账号和默认密码只适合本地开发。`docker/config.json` 保留的是开发用 JWT secret 模板；如果首次启动时缺少 `config.json`，Saturn 会生成一个包含随机 `auth.jwt_secret` 的新配置文件。真实部署前，这些内容都必须替换。
 
 ### 直接运行 Go Server
 
@@ -537,7 +559,7 @@ go run ./cmd/server
 go run ./cmd/server -config config.json
 ```
 
-如果首次启动时缺少 `config.json`，Saturn 会根据内置默认值和当前 `SATURN_*` 环境变量生成本地配置文件。
+如果首次启动时缺少 `config.json`，Saturn 会根据内置默认值和当前 `SATURN_*` 环境变量生成本地配置文件。生成出来的文件包含随机 `auth.jwt_secret`，所以如果你希望 JWT 会话在重启后仍然有效，就要把 `config.json` 持久化保存。
 
 ## 配置
 
@@ -554,6 +576,8 @@ config.json
 | `config.example.json` | 宿主机开发模板，使用 `localhost` PostgreSQL 和 `127.0.0.1:6379` Redis |
 | `docker/config.json`  | Docker 运行配置，使用 Compose 服务名，并使用 `/app/objects` 作为存储路径       |
 
+这两个已提交模板都保留了开发用 JWT secret。如果 `config.json` 缺失，Saturn 会改为生成一个带随机 secret 的新文件。
+
 主要配置区域：
 
 | 区域         | 用途                                          |
@@ -567,7 +591,7 @@ config.json
 | `llm`      | LLM provider、worker、timeout 和 rate-limit 设置 |
 | `logging`  | 日志等级                                        |
 
-如果已有配置文件无法解析、包含未知字段或缺少必需字段，Saturn 会 fail fast。它不会静默回退到环境变量或默认值。
+如果已有配置文件无法解析、包含未知字段或缺少必需字段，Saturn 会 fail fast。若配置文件不存在，它会先根据内置默认值和当前 `SATURN_*` 环境变量生成一个。
 
 ## API 概览
 

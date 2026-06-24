@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	auditsqlc "github.com/stark-lin/go-proj/internal/platform/audit/sqlc"
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
+	auditsqlc "github.com/stark-lin/saturn/internal/platform/audit/sqlc"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
 )
 
 type SQLRepository struct {
