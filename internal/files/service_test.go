@@ -15,10 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stark-lin/go-proj/internal/platform/audit"
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/ref"
-	"github.com/stark-lin/go-proj/internal/platform/storage"
+	"github.com/stark-lin/saturn/internal/platform/audit"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/ref"
+	"github.com/stark-lin/saturn/internal/platform/storage"
 	"lukechampine.com/blake3"
 )
 

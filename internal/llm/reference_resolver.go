@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stark-lin/go-proj/internal/accounting"
-	"github.com/stark-lin/go-proj/internal/calendar"
-	"github.com/stark-lin/go-proj/internal/files"
-	"github.com/stark-lin/go-proj/internal/notes"
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/ref"
+	"github.com/stark-lin/saturn/internal/accounting"
+	"github.com/stark-lin/saturn/internal/calendar"
+	"github.com/stark-lin/saturn/internal/files"
+	"github.com/stark-lin/saturn/internal/notes"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
 type ObjectResolver interface {

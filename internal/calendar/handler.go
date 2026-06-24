@@ -4,7 +4,7 @@ package calendar
 import (
 	"context"
 
-	"github.com/stark-lin/go-proj/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/auth"
 )
 
 type EventService interface {

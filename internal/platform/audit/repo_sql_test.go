@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	auditsqlc "github.com/stark-lin/go-proj/internal/platform/audit/sqlc"
+	auditsqlc "github.com/stark-lin/saturn/internal/platform/audit/sqlc"
 )
 
 func TestNewSQLRepositoryStoresDatabaseDependency(t *testing.T) {

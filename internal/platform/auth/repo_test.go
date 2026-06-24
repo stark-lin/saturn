@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stark-lin/go-proj/internal/platform/config"
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
+	"github.com/stark-lin/saturn/internal/platform/config"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
 )
 
 func TestSQLRepositoryWithPostgreSQL(t *testing.T) {

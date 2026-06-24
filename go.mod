@@ -1,5 +1,5 @@
 // This module file declares the Saturn Go module and language version.
-module github.com/stark-lin/go-proj
+module github.com/stark-lin/saturn
 
 go 1.26.0
 

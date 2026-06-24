@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stark-lin/go-proj/internal/platform/config"
+	"github.com/stark-lin/saturn/internal/platform/config"
 )
 
 func TestMain(m *testing.M) {

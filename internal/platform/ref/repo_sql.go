@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/lib/pq"
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
-	refsqlc "github.com/stark-lin/go-proj/internal/platform/ref/sqlc"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
+	refsqlc "github.com/stark-lin/saturn/internal/platform/ref/sqlc"
 )
 
 type SQLRepository struct {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stark-lin/go-proj/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/auth"
 )
 
 func TestHandlerCreatesListsGetsDownloadsAndDeletesFile(t *testing.T) {

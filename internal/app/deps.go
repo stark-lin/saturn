@@ -8,14 +8,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/platform/audit"
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/config"
-	platformdb "github.com/stark-lin/go-proj/internal/platform/db"
-	"github.com/stark-lin/go-proj/internal/platform/httpx"
-	"github.com/stark-lin/go-proj/internal/platform/logger"
-	platformredis "github.com/stark-lin/go-proj/internal/platform/redis"
-	"github.com/stark-lin/go-proj/internal/platform/ref"
+	"github.com/stark-lin/saturn/internal/platform/audit"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/config"
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
+	"github.com/stark-lin/saturn/internal/platform/httpx"
+	"github.com/stark-lin/saturn/internal/platform/logger"
+	platformredis "github.com/stark-lin/saturn/internal/platform/redis"
+	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
 const migrationsDir = "migrations"

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/httpx"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/httpx"
 )
 
 func (a *App) registerRoutes() {

@@ -11,16 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/accounting"
-	"github.com/stark-lin/go-proj/internal/calendar"
-	"github.com/stark-lin/go-proj/internal/files"
-	"github.com/stark-lin/go-proj/internal/llm"
-	"github.com/stark-lin/go-proj/internal/notes"
-	"github.com/stark-lin/go-proj/internal/platform/audit"
-	"github.com/stark-lin/go-proj/internal/platform/auth"
-	"github.com/stark-lin/go-proj/internal/platform/config"
-	"github.com/stark-lin/go-proj/internal/platform/httpx"
-	"github.com/stark-lin/go-proj/internal/platform/search"
+	"github.com/stark-lin/saturn/internal/accounting"
+	"github.com/stark-lin/saturn/internal/calendar"
+	"github.com/stark-lin/saturn/internal/files"
+	"github.com/stark-lin/saturn/internal/llm"
+	"github.com/stark-lin/saturn/internal/notes"
+	"github.com/stark-lin/saturn/internal/platform/audit"
+	"github.com/stark-lin/saturn/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/config"
+	"github.com/stark-lin/saturn/internal/platform/httpx"
+	"github.com/stark-lin/saturn/internal/platform/search"
 )
 
 func TestWebResponsesDisableBrowserCache(t *testing.T) {

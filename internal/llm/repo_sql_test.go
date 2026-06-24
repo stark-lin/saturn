@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/platform/auth"
+	"github.com/stark-lin/saturn/internal/platform/auth"
 )
 
 func TestSQLRepositoryRejectsMissingDatabase(t *testing.T) {

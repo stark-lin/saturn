@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stark-lin/go-proj/internal/platform/config"
+	"github.com/stark-lin/saturn/internal/platform/config"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )

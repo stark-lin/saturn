@@ -52,7 +52,7 @@ DOMPurify 3.4.5     -> web/src/vendor/purify.min.js  -> /vendor/purify.min.js
 The initial code inventory fixes the first implementation stack as:
 
 ```text
-Go module: github.com/stark-lin/go-proj
+Go module: github.com/stark-lin/saturn
 Backend: Go net/http and standard library first
 Frontend: plain native HTML first
 Frontend HTTP: browser forms or minimal vanilla JavaScript fetch when required
