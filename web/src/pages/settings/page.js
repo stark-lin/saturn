@@ -107,7 +107,7 @@ function renderChoice({ code, meta, title, description, onOpen }) {
   return choice;
 }
 
-function auditLogTable(logs, onSelectLog) {
+function auditLogTable(logs) {
   return renderDataTable({
     caption: "Append-only audit logs",
     columns: [
@@ -118,7 +118,6 @@ function auditLogTable(logs, onSelectLog) {
       { key: "result", label: "Result" },
       { key: "source", label: "Source IP" },
       { key: "reason", label: "Reason" },
-      { key: "detail", label: "Detail" },
     ],
     rows: logs.map((log) => ({
       time: log.created_at,
@@ -128,31 +127,7 @@ function auditLogTable(logs, onSelectLog) {
       result: renderTag(log.result),
       source: log.source_ip,
       reason: log.reason ?? "",
-      detail: renderButton("OPEN", {
-        flat: true,
-        chip: true,
-        label: `Open audit log ${log.id}`,
-        onClick: () => onSelectLog(log),
-      }),
     })),
-  });
-}
-
-function renderAuditDetail(log) {
-  return renderDetailPanel({
-    title: `Audit Log ${log.id}`,
-    note: "Append-only event detail from the platform audit table.",
-    children: [renderDetailList([
-      { label: "ID", value: log.id },
-      { label: "Created At", value: log.created_at },
-      { label: "Actor", value: actorLabel(log) },
-      { label: "Action", value: log.action },
-      { label: "Target", value: log.target_ref_code },
-      { label: "Result", value: log.result },
-      { label: "Reason", value: log.reason || "empty" },
-      { label: "Source IP", value: log.source_ip || "empty" },
-      { label: "User Agent", value: log.user_agent || "empty" },
-    ])],
   });
 }
 
@@ -160,7 +135,6 @@ function renderAuditPage(target) {
   const output = document.createElement("div");
   output.setAttribute("aria-live", "polite");
   output.className = "settings-feedback";
-  const detailSlot = el("div", "settings-feedback");
 
   const form = document.createElement("form");
   form.className = "control-stack audit-filter-bar";
@@ -216,18 +190,14 @@ function renderAuditPage(target) {
       message: "Reading append-only audit records.",
       tone: "info",
     }));
-    detailSlot.replaceChildren();
     const query = new URLSearchParams(new FormData(form));
     query.set("limit", "50");
     try {
       const result = await getJSON(`/api/platform/audit-logs?${query}`);
       const logs = Array.isArray(result.audit_logs) ? result.audit_logs : [];
       output.replaceChildren(logs.length > 0
-        ? auditLogTable(logs, (log) => detailSlot.replaceChildren(renderAuditDetail(log)))
+        ? auditLogTable(logs)
         : renderNotice({ title: "No audit logs", message: "No records match the current filters.", tone: "info" }));
-      if (logs.length > 0) {
-        detailSlot.replaceChildren(renderAuditDetail(logs[0]));
-      }
     } catch (error) {
       output.replaceChildren(renderNotice({ title: "Audit logs unavailable", message: error.message }));
     } finally {
@@ -244,7 +214,7 @@ function renderAuditPage(target) {
     title: "Audit",
     note: "Superuser read-only audit access",
     actions: [renderButton("RETURN", { label: "Return to settings selector", onClick: () => navigateSettings() })],
-    children: [form, output, detailSlot],
+    children: [form, output],
   }));
   loadAuditLogs();
 }
@@ -521,7 +491,7 @@ function renderSettingsHome(target) {
       code: "AUD",
       meta: "Audit",
       title: "Audit",
-      description: "Search append-only audit records and open individual event detail.",
+      description: "Search append-only audit records.",
       onOpen: () => navigateSettings({ section: "audit" }),
     }),
     renderChoice({
