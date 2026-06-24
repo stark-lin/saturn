@@ -131,6 +131,12 @@ scripts/                 development helper scripts
 docker compose up --build
 ```
 
+If you want a one-command startup without cloning the repository first, run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
+```
+
 Or use the development helper script:
 
 ```sh
@@ -483,6 +489,12 @@ scripts/                 development helper scripts
 
 ```sh
 docker compose up --build
+```
+
+如果你想在不先克隆仓库的情况下直接一键启动，可以运行：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
 ```
 
 也可以使用开发辅助脚本：
