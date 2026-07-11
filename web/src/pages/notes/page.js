@@ -19,6 +19,31 @@ function formatDate(value) {
   });
 }
 
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return date.toLocaleString("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function versionOperationLabel(operation) {
+  switch (operation) {
+    case "create":
+      return "Created";
+    case "restore":
+      return "Restored";
+    default:
+      return "Updated";
+  }
+}
+
 function renderNoteCard(note, onOpen) {
   const card = el("button", "note-card");
   card.type = "button";
@@ -90,6 +115,30 @@ function renderPager({ currentPage, hasPrevious, hasNext, onPage }) {
   return pager;
 }
 
+function renderVersionCard(version, currentVersionRef, onOpen) {
+  const card = el("button", "note-history-card");
+  card.type = "button";
+  card.setAttribute("aria-label", `Open version ${version.version_number}`);
+  card.addEventListener("click", () => onOpen(version.ref_code));
+
+  const heading = el("span", "note-history-card__heading");
+  const versionNumber = el("strong", "note-history-card__version");
+  versionNumber.textContent = `V${version.version_number}`;
+  const operation = el("span", "note-history-card__operation");
+  operation.textContent = versionOperationLabel(version.operation);
+  heading.append(versionNumber, operation);
+  if (version.ref_code === currentVersionRef) {
+    heading.append(renderStatusBadge("Current", { state: "off" }));
+  }
+
+  const title = el("span", "note-history-card__title");
+  title.textContent = version.title || "Untitled Note";
+  const metadata = el("span", "note-history-card__meta");
+  metadata.textContent = `${version.ref_code} · ${formatDateTime(version.created_at)}`;
+  card.append(heading, title, metadata);
+  return card;
+}
+
 export function renderNotesPage(target) {
   const state = {
     notes: [],
@@ -100,8 +149,13 @@ export function renderNotesPage(target) {
     dirty: false,
     editorBusy: false,
     mutating: false,
+    editorMode: "edit",
+    historyVersions: [],
+    selectedVersionRef: null,
     listRequestNumber: 0,
     detailRequestNumber: 0,
+    historyRequestNumber: 0,
+    versionRequestNumber: 0,
   };
 
   const module = renderSurface("section", { className: "section notes-module", label: "Notes" });
@@ -144,7 +198,8 @@ export function renderNotesPage(target) {
   modeSwitch.setAttribute("aria-label", "Editor mode");
   const editButton = renderButton("EDIT", { chip: true, variant: "primary", pressed: true });
   const previewButton = renderButton("VIEW", { chip: true, pressed: false, label: "Preview note" });
-  modeSwitch.append(editButton, previewButton);
+  const historyButton = renderButton("HISTORY", { chip: true, pressed: false, label: "Show note history" });
+  modeSwitch.append(editButton, previewButton, historyButton);
   const editorStatus = renderStatusBadge("Loading", { state: "off" });
   editorStatus.classList.add("note-editor-status");
   editorHeader.append(editorRef, modeSwitch, editorStatus);
@@ -157,7 +212,24 @@ export function renderNotesPage(target) {
   source.setAttribute("aria-label", "Markdown note source");
   sourceField.append(source);
   const preview = renderSurface("article", { className: "note-preview", raised: true, label: "Markdown preview" });
-  editorPanel.append(sourceField, preview);
+  const history = renderSurface("section", { className: "note-history", raised: true, label: "Note version history" });
+  const historyHeader = el("header", "note-history__head");
+  const historyTitle = document.createElement("strong");
+  historyTitle.textContent = "Version History";
+  const historyStatus = el("span", "note-history__status");
+  historyStatus.textContent = "Select History to load versions.";
+  historyStatus.setAttribute("aria-live", "polite");
+  historyHeader.append(historyTitle, historyStatus);
+  const historyLayout = el("div", "note-history__layout");
+  const historyList = el("div", "note-history__list");
+  historyList.setAttribute("aria-label", "Note versions");
+  const historyDetail = renderSurface("article", { className: "note-history__detail", label: "Selected note version" });
+  const historyDetailEmpty = document.createElement("p");
+  historyDetailEmpty.textContent = "Select a version to inspect its immutable content snapshot.";
+  historyDetail.append(historyDetailEmpty);
+  historyLayout.append(historyList, historyDetail);
+  history.append(historyHeader, historyLayout);
+  editorPanel.append(sourceField, preview, history);
 
   const editorActions = el("div", "note-editor-actions");
   const saveButton = renderButton("SAVE", { variant: "primary" });
@@ -224,11 +296,16 @@ export function renderNotesPage(target) {
   }
 
   function setMode(mode) {
+    state.editorMode = mode;
     editorPanel.dataset.mode = mode;
-    editButton.classList.toggle("button--primary", mode === "edit");
-    editButton.setAttribute("aria-pressed", String(mode === "edit"));
-    previewButton.classList.toggle("button--primary", mode === "preview");
-    previewButton.setAttribute("aria-pressed", String(mode === "preview"));
+    [
+      [editButton, "edit"],
+      [previewButton, "preview"],
+      [historyButton, "history"],
+    ].forEach(([button, buttonMode]) => {
+      button.classList.toggle("button--primary", mode === buttonMode);
+      button.setAttribute("aria-pressed", String(mode === buttonMode));
+    });
   }
 
   function setEditorBusy(busy) {
@@ -236,6 +313,7 @@ export function renderNotesPage(target) {
     source.disabled = busy;
     saveButton.disabled = busy;
     deleteButton.disabled = busy || !state.currentNote?.ref_code;
+    historyButton.disabled = busy || !state.currentNote?.ref_code;
   }
 
   function setMutating(mutating) {
@@ -249,11 +327,103 @@ export function renderNotesPage(target) {
     editorStatus.dataset.state = state.currentNote?.ref_code ? "off" : "warning";
   }
 
+  function resetHistory() {
+    state.historyRequestNumber += 1;
+    state.versionRequestNumber += 1;
+    state.historyVersions = [];
+    state.selectedVersionRef = null;
+    historyList.replaceChildren();
+    historyStatus.textContent = "History has not been loaded.";
+    historyDetail.replaceChildren(historyDetailEmpty);
+  }
+
+  function renderHistoryList() {
+    historyList.replaceChildren(...state.historyVersions.map((version) => renderVersionCard(
+      version,
+      state.currentNote?.current_version_ref,
+      openHistoryVersion,
+    )));
+    historyStatus.textContent = state.historyVersions.length === 1
+      ? "1 immutable version"
+      : `${state.historyVersions.length} immutable versions`;
+  }
+
+  async function loadHistory() {
+    if (!state.currentNote?.ref_code) {
+      return;
+    }
+    const noteRefCode = state.currentNote.ref_code;
+    const requestNumber = ++state.historyRequestNumber;
+    historyStatus.textContent = "Loading versions...";
+    historyList.replaceChildren();
+    historyDetail.replaceChildren(historyDetailEmpty);
+    try {
+      const result = await getJSON(`/api/notes/${encodeURIComponent(noteRefCode)}/versions`);
+      if (requestNumber !== state.historyRequestNumber || state.currentNote?.ref_code !== noteRefCode) {
+        return;
+      }
+      state.historyVersions = result.versions ?? [];
+      renderHistoryList();
+    } catch (error) {
+      if (requestNumber !== state.historyRequestNumber) {
+        return;
+      }
+      historyStatus.textContent = "Unable to load history.";
+      setNotice("Unable to Load Note History", error.message, "warning");
+    }
+  }
+
+  async function openHistoryVersion(refCode) {
+    const requestNumber = ++state.versionRequestNumber;
+    state.selectedVersionRef = refCode;
+    historyDetail.replaceChildren();
+    const loading = document.createElement("p");
+    loading.textContent = `Loading ${refCode}...`;
+    historyDetail.append(loading);
+    try {
+      const result = await getJSON(`/api/notes/versions/by-ref/${encodeURIComponent(refCode)}`);
+      if (requestNumber !== state.versionRequestNumber || state.selectedVersionRef !== refCode) {
+        return;
+      }
+      const version = result.version;
+      const metadata = el("header", "note-history-version__head");
+      const identity = document.createElement("strong");
+      identity.textContent = `V${version.version_number} · ${versionOperationLabel(version.operation)}`;
+      const reference = el("span", "ref-code");
+      reference.textContent = version.ref_code;
+      const created = el("span", "note-history-version__date");
+      created.textContent = formatDateTime(version.created_at);
+      metadata.append(identity, reference, created);
+      const versionPreview = el("div", "note-preview note-history-version__preview");
+      renderPreview(versionPreview, version.content);
+      historyDetail.replaceChildren(metadata, versionPreview);
+    } catch (error) {
+      if (requestNumber !== state.versionRequestNumber) {
+        return;
+      }
+      const failed = document.createElement("p");
+      failed.textContent = error.message;
+      historyDetail.replaceChildren(failed);
+      setNotice("Unable to Load Note Version", error.message, "warning");
+    }
+  }
+
+  function showHistory() {
+    if (!state.currentNote?.ref_code || state.editorBusy) {
+      return;
+    }
+    setMode("history");
+    if (state.historyVersions.length === 0) {
+      void loadHistory();
+    }
+  }
+
   async function openEditor(refCode) {
     const requestNumber = ++state.detailRequestNumber;
     state.currentNote = null;
     state.draftMarkdown = "";
     state.dirty = false;
+    resetHistory();
     source.value = "";
     renderPreview(preview, "");
     setMode("edit");
@@ -295,6 +465,7 @@ export function renderNotesPage(target) {
     state.currentNote = null;
     state.draftMarkdown = "";
     state.dirty = false;
+    resetHistory();
     module.dataset.view = "list";
     renderList();
   }
@@ -307,6 +478,7 @@ export function renderNotesPage(target) {
     };
     state.draftMarkdown = newNoteMarkdown;
     state.dirty = true;
+    resetHistory();
     source.value = newNoteMarkdown;
     renderPreview(preview, state.draftMarkdown);
     setMode("edit");
@@ -330,11 +502,15 @@ export function renderNotesPage(target) {
       state.currentNote = result.note;
       state.draftMarkdown = result.note.markdown;
       state.dirty = false;
+      resetHistory();
       source.value = result.note.markdown;
       renderPreview(preview, state.draftMarkdown);
       setSavedStatus();
       setMutating(false);
       setEditorBusy(false);
+      if (state.editorMode === "history") {
+        void loadHistory();
+      }
       await loadNotes(1);
     } catch (error) {
       editorStatus.textContent = "Save Failed";
@@ -361,6 +537,7 @@ export function renderNotesPage(target) {
       state.detailRequestNumber += 1;
       state.currentNote = null;
       state.dirty = false;
+      resetHistory();
       module.dataset.view = "list";
       setMutating(false);
       setEditorBusy(false);
@@ -387,6 +564,7 @@ export function renderNotesPage(target) {
   });
   editButton.addEventListener("click", () => setMode("edit"));
   previewButton.addEventListener("click", () => setMode("preview"));
+  historyButton.addEventListener("click", showHistory);
   backButton.addEventListener("click", returnToList);
   newButton.addEventListener("click", createNote);
   empty.append(emptyTitle, emptyMessage);

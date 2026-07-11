@@ -469,7 +469,7 @@ Key components:
 * Template Picker
 * Linked References Panel
 
-The current Notes page in `web/src` uses the owner-only `/api/notes` logical Note API: list/detail continue to show only the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. Delete is a server-side soft delete. Version list/read/restore and deleted-Note restore are available through the API but do not yet have dedicated controls in this first native HTML surface. Collections, templates, associations, and RSS remain future UI capabilities.
+The current Notes page in `web/src` uses the owner-only `/api/notes` logical Note API: list/detail show the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. The editor's `HISTORY` mode loads the current Note's version summaries and lets the user click a version to read its immutable content through the version RefCode endpoint without replacing the current draft. Delete is a server-side soft delete. Old-version restore and deleted-Note restore remain API-only operations in this first native HTML surface. Collections, templates, associations, and RSS remain future UI capabilities.
 
 ### 6.4 Accounting
 
