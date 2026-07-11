@@ -21,6 +21,10 @@ local filesystem storage volume
 
 Redis is a required component; a no-Redis mode is not provided.
 
+For host-machine development, Compose publishes PostgreSQL at
+`127.0.0.1:5432` and Redis at `127.0.0.1:6379`. These dependency ports are
+bound to loopback only; the application remains published on port `8080`.
+
 `docker-compose.yml` uses `depends_on` for container startup order only. Dependency readiness is enforced by the application startup wait described below, so the app container may start before PostgreSQL or Redis accepts connections, then block until both are ready or the configured readiness timeout expires.
 
 Files default to using the local filesystem runtime backend. The Docker development environment mounts `/app/objects` to the `objects-data` volume; local development defaults to writing to `./objects`.
