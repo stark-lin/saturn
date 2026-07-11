@@ -496,3 +496,7 @@ FIL-00000002 + work
 CAL-00000003 + work
 ACC-00000004 + work
 ```
+
+## References
+
+- [Project README](../README.md)

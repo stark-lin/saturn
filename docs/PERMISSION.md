@@ -130,3 +130,7 @@ if that transaction fails or rolls back, no SUCCESS row is retained
 after a failed or denied outcome is known, FAILED or DENIED is inserted in a new audit-only PostgreSQL transaction
 LOGIN and LOGOUT target SYS-00000000 because they are system-level operations
 ```
+
+## References
+
+- [Project README](../README.md)

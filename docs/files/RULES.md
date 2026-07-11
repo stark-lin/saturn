@@ -355,3 +355,8 @@ No committing empty module placeholders with no business behavior
 ```
 
 This file is the guideline for project file organization. Update this document first when adding directories or changing module boundaries.
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Project README](../../README.md)

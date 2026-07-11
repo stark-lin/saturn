@@ -68,6 +68,8 @@ The pipeline has the following behavior:
 | Push to `main` | Same quality checks | Publish multi-platform `latest` and `sha-<commit>` images |
 | Manual dispatch | Same quality checks | Build the current-platform image without publishing it |
 
+The quality job also runs `sh scripts/check-docs.sh`. It validates the centrally configured documentation exemptions, README coverage, final `References` sections, relative links, and reciprocal README/design-document references.
+
 Container publishing only starts after the quality job succeeds. Published images support `linux/amd64` and `linux/arm64`, include an SBOM, and receive a GitHub artifact provenance attestation.
 
 The target registry and image name are:
@@ -121,3 +123,11 @@ local filesystem storage volume
 Separated deployment does not change the product constraints of PostgreSQL, Redis, and Files local storage directory as default required runtime components.
 
 It does not target Kubernetes, multi-node high availability, or public SaaS multi-tenant operation as default goals.
+
+## References
+
+- [Project README](../README.md)
+- [GitHub Automation](../.github/README.md)
+- [Workflow Definitions](../.github/workflows/README.md)
+- [Docker Support](../docker/README.md)
+- [Server Command](../cmd/server/README.md)

@@ -107,3 +107,8 @@ When changing dependency directions or naming rules, update files/RULES.md.
 When changing testing or logging rules, update both TESTING_LOGGING.md and files/RULES.md simultaneously.
 When adding or modifying HTTP endpoints, update the corresponding api/<MODULE>.md covered by API.md conventions.
 ```
+
+## References
+
+- [Project README](../README.md)
+- [Repository Structure Documents](files/README.md)

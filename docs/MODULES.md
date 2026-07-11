@@ -166,3 +166,8 @@ current baseline LLM is read-only queued request/result
 LLM tool calls must go through exported service / facade paths and record LLM audit events.
 
 Current baseline LLM persists `llm_sessions`, and merges request/response into `llm_requests` and `llm_request_references`. Session and Request are registered as `LLM-*` ObjectRefs; the HTTP session detail displays request inputs and response results in a request view. Requests are immutable once submitted, and are claimed and asynchronously advanced (`queued -> running -> success/error`) by a fixed number of workers using PostgreSQL `FOR UPDATE SKIP LOCKED`; no retry / dead-letter is implemented; provider timeouts are written to `llm_request_timeout`; you can only delete an entire session which recursively deletes its requests.
+
+## References
+
+- [Project README](../README.md)
+- [Internal Application Packages](../internal/README.md)

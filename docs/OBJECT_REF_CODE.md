@@ -263,3 +263,9 @@ Metadata queries perform owner-only isolation. Parsing a ref code only yields me
 ## 8. One-Sentence Summary
 
 Object Ref Code is a unified, readable reference code for all important internal objects in Saturn, used for user referencing, LLM calls, global metadata queries, and cross-module associations; internal data relationships still use database ids.
+
+## References
+
+- [Project README](../README.md)
+- [Object Reference Support](../internal/platform/ref/README.md)
+- [Object Reference Query Sources](../internal/platform/ref/queries/README.md)

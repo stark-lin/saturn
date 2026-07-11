@@ -487,3 +487,12 @@ Storage does not own Files' business rules
 Auth does not generate business SQL
 Do not add empty platform packages for future scheduler, validation, queue, or indexing behavior
 ```
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Accounting Module](../../internal/accounting/README.md)
+- [Calendar Module](../../internal/calendar/README.md)
+- [Files Module](../../internal/files/README.md)
+- [LLM Module](../../internal/llm/README.md)
+- [Notes Module](../../internal/notes/README.md)

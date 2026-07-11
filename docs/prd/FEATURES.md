@@ -317,3 +317,8 @@ internal/platform/ref
 ```
 
 For a detailed summary, see [../OBJECT_REF_CODE.md](../OBJECT_REF_CODE.md).
+
+## References
+
+- [Product Requirements Documents](README.md)
+- [Project README](../../README.md)

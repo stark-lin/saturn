@@ -131,3 +131,9 @@ Calendar is reduced to EventAggregate / Event: Aggregate owns immutable metadata
 Life Records is reduced to Accounting / Bookkeeping.
 Accounting only records and aggregates; it does not provide investment advice or automatic bank synchronization.
 ```
+
+## References
+
+- [Project README](../README.md)
+- [Documentation Index](README.md)
+- [Product Requirements Documents](prd/README.md)

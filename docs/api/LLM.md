@@ -363,3 +363,9 @@ No streaming endpoint
 No retry queue
 No dead-letter queue
 ```
+
+## References
+
+- [LLM Module](../../internal/llm/README.md)
+- [LLM Query Sources](../../internal/llm/queries/README.md)
+- [LLM Page](../../web/src/pages/llm/README.md)

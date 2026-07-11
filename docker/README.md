@@ -6,3 +6,8 @@ The root `docker-compose.yml` is the default development topology for Saturn. Th
 `config.json` is copied into the application image as `/app/config.json` and uses Compose service names for PostgreSQL and Redis. File blobs are stored under `/app/objects`.
 
 GitHub Actions publishes the root Dockerfile to `ghcr.io/stark-lin/saturn`. The embedded `config.json` is a development default only. Deployments using a published image must mount a production configuration over `/app/config.json` and persist `/app/objects`.
+
+## References
+
+- [Deployment Guide](../docs/DEPLOY.md)
+- [Dependency Guide](../docs/DEPENDENCIES.md)

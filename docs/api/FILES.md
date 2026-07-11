@@ -254,3 +254,9 @@ After creation, Collection and File metadata or tags cannot be modified; if you 
 | `500` | `files_unavailable` | Files service is unavailable |
 
 Single resource non-existence and inaccessibility uniformly return `404 / not_found`.
+
+## References
+
+- [Files Module](../../internal/files/README.md)
+- [Files Query Sources](../../internal/files/queries/README.md)
+- [Files Page](../../web/src/pages/files/README.md)

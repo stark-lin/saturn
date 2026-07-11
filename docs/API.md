@@ -192,3 +192,10 @@ When modifying shared errors, authentication, SSE, or ref_code rules: Also updat
 When adjusting module owners or path prefixes: Update this index, docs/MODULES.md, and structure documents
 Only routes registered in internal/app/routes.go can be marked as Implemented
 ```
+
+## References
+
+- [Project README](../README.md)
+- [Documentation Index](README.md)
+- [API Documents](api/README.md)
+- [Browser API Client](../web/src/shared/api/README.md)

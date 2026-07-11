@@ -255,3 +255,9 @@ The specific `message` will return corresponding Accounting error text depending
 | `404` | `not_found` | Account / Transaction does not exist, or the current actor has no access rights |
 | `409` | `conflict` | Voiding a Transaction that is already `voided` |
 | `500` | `accounting_unavailable` | Accounting dependencies or internal operations failed |
+
+## References
+
+- [Accounting Module](../../internal/accounting/README.md)
+- [Accounting Query Sources](../../internal/accounting/queries/README.md)
+- [Accounting Page](../../web/src/pages/accounting/README.md)

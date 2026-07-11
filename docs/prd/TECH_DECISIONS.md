@@ -226,3 +226,8 @@ LLM Audit Trail
 ```
 
 LLM enhancement capabilities are based on existing data and APIs, providing backend-hosted personal data search, summarization, draft generation, and controlled assisted operations.
+
+## References
+
+- [Product Requirements Documents](README.md)
+- [Project README](../../README.md)

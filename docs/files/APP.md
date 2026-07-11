@@ -44,3 +44,8 @@ Handling local FS storage details directly
 ```
 
 ---
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Application Wiring](../../internal/app/README.md)

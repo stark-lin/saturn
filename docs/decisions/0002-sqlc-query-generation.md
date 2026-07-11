@@ -77,3 +77,8 @@ The generated packages add source files to the repository and expose database-or
 ## Reconsideration Conditions
 
 Revisit this decision only if the runtime database access stack changes materially, sqlc cannot express required PostgreSQL queries without excessive workarounds, or query ownership rules require a new module boundary.
+
+## References
+
+- [Architecture Decisions](README.md)
+- [Project README](../../README.md)

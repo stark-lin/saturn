@@ -40,6 +40,9 @@ jobs:
           go tool sqlc generate
           git diff --exit-code
 
+      - name: Verify documentation references
+        run: sh scripts/check-docs.sh
+
       - name: Verify Go formatting
         run: |
           unformatted_files="$(gofmt -l tools.go cmd internal)"

@@ -727,3 +727,27 @@ Saturn 主要是一个个人自托管系统，但欢迎以下类型的 issue 和
 Saturn 使用 GNU Affero General Public License v3.0 授权。
 
 完整许可证文本见 [LICENSE](./LICENSE)。
+
+## References
+
+- [Documentation Index](docs/README.md)
+- [Product Requirements](docs/PRD.md)
+- [Documentation References](docs/DOCUMENTATION.md)
+- [API Conventions](docs/API.md)
+- [Dependency Guide](docs/DEPENDENCIES.md)
+- [Deployment Guide](docs/DEPLOY.md)
+- [Frontend Design](docs/DESIGN.md)
+- [Data Model](docs/ER.md)
+- [Repository Structure Guide](docs/FILES.md)
+- [Module Boundaries](docs/MODULES.md)
+- [Module Relationship Model](docs/MODULE_ER.md)
+- [Object Ref Code](docs/OBJECT_REF_CODE.md)
+- [Permission Model](docs/PERMISSION.md)
+- [Testing and Logging Standards](docs/TESTING_LOGGING.md)
+- [Initial Code Inventory Decision](docs/decisions/0001-initial-code-inventory.md)
+- [sqlc Query Generation Decision](docs/decisions/0002-sqlc-query-generation.md)
+- [Business Module Extensions](docs/files/MODULES_EXTENDED.md)
+- [Structure Rules](docs/files/RULES.md)
+- [Feature Modules](docs/prd/FEATURES.md)
+- [Product Scope](docs/prd/PRODUCT.md)
+- [Technical Decisions](docs/prd/TECH_DECISIONS.md)

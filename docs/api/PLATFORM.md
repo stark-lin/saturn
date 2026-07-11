@@ -644,3 +644,15 @@ Future full-text Search must apply the actor's authorization scope before return
 The Storage API does not expose internal local FS paths or storage implementation details to business clients.
 ObjectRef metadata resolution only returns owner-owned metadata; actual object reads cannot bypass the owner module's service permission checks.
 ```
+
+## References
+
+- [Audit Support](../../internal/platform/audit/README.md)
+- [Audit Query Sources](../../internal/platform/audit/queries/README.md)
+- [Authentication and Authorization Support](../../internal/platform/auth/README.md)
+- [Authentication Query Sources](../../internal/platform/auth/queries/README.md)
+- [Object Reference Support](../../internal/platform/ref/README.md)
+- [Search Support](../../internal/platform/search/README.md)
+- [Login Page](../../web/src/pages/login/README.md)
+- [Search Page](../../web/src/pages/search/README.md)
+- [Settings Page](../../web/src/pages/settings/README.md)

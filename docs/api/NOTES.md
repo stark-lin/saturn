@@ -338,3 +338,10 @@ The service layer must enforce owner-only access and audit.
 Handlers must only bind/validate transport input, obtain Principal, call services and write responses.
 Contract tests must cover Markdown derivation, owner-only authorization-as-404 and current Markdown replacement without version endpoints.
 ```
+
+## References
+
+- [Notes Module](../../internal/notes/README.md)
+- [Notes Query Sources](../../internal/notes/queries/README.md)
+- [Notes RSS Support](../../internal/notes/rss/README.md)
+- [Notes Page](../../web/src/pages/notes/README.md)

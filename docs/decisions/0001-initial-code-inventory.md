@@ -24,3 +24,8 @@ Build: no React, Vite, Node, or frontend package manager in this pass
 ## Consequences
 
 Future feature work should replace scaffold boundaries with real service, repository, handler, test, and migration behavior module by module. The long-term rule still stands: do not add new empty future packages after this bootstrap inventory.
+
+## References
+
+- [Architecture Decisions](README.md)
+- [Project README](../../README.md)

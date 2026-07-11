@@ -1,0 +1,11 @@
+# Directories exempt from Saturn README coverage.
+# Entries are shell patterns matched against repository-relative directories.
+
+# Database migration history.
+migrations
+
+# sqlc output is generated from the adjacent queries directories.
+*/sqlc
+
+# Fixed third-party browser runtime assets.
+web/src/vendor

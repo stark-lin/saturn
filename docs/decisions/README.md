@@ -17,3 +17,9 @@ Do not put ordinary implementation notes or to-do items into decisions
 0001-initial-code-inventory.md
 0002-sqlc-query-generation.md
 ```
+
+## References
+
+- [Documentation Index](../README.md)
+- [Initial Code Inventory Decision](0001-initial-code-inventory.md)
+- [sqlc Query Generation Decision](0002-sqlc-query-generation.md)

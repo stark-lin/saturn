@@ -270,3 +270,8 @@ REST API
 ```
 
 ---
+
+## References
+
+- [Product Requirements Documents](README.md)
+- [Project README](../../README.md)

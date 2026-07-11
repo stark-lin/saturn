@@ -288,3 +288,8 @@ HTTP 404
 | `404` | `not_found` | EventAggregate / Event does not exist, or the current actor has no access rights |
 | `409` | `conflict` | Finishing an Event that is already `finished` / `voided`, or voiding an Event that is already `voided` |
 | `500` | `calendar_unavailable` | Calendar dependencies or internal operations failed |
+
+## References
+
+- [Calendar Module](../../internal/calendar/README.md)
+- [Calendar Page](../../web/src/pages/calendar/README.md)

@@ -140,3 +140,7 @@ This dependency graph must remain a directed acyclic graph (DAG). Dependencies c
 `internal/app` can do module wiring, but cannot implement business rules. Business modules can depend on the encapsulation capabilities of `internal/platform`, but cannot directly depend on the Redis client, local FS storage implementations, LLM SDKs, or specific external service clients.
 
 Dashed lines indicate collaboration protocols, not that the platform reversely owns business modules. `platform/objectref` and `llm` must access business capabilities through services or facades, and cannot bypass the authorization, auditing, and security checks of the business modules.
+
+## References
+
+- [Project README](../README.md)

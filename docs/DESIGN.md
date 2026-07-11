@@ -776,3 +776,23 @@ These files remain plain DOM/HTML without introducing frontend frameworks, bundl
 ## 12. Design Principle
 
 > Retro-futurism is only for ambiance; actual implementation relies on clear grids, solid borders, monospace identifiers, low-saturation backgrounds, readable data tables, and distinct fixed/scrollable hierarchies.
+
+## References
+
+- [Project README](../README.md)
+- [Web Client](../web/README.md)
+- [Web Source](../web/src/README.md)
+- [Web Application Shell](../web/src/app/README.md)
+- [Web Pages](../web/src/pages/README.md)
+- [Accounting Page](../web/src/pages/accounting/README.md)
+- [Calendar Page](../web/src/pages/calendar/README.md)
+- [Files Page](../web/src/pages/files/README.md)
+- [LLM Page](../web/src/pages/llm/README.md)
+- [Login Page](../web/src/pages/login/README.md)
+- [Notes Page](../web/src/pages/notes/README.md)
+- [Search Page](../web/src/pages/search/README.md)
+- [Settings Page](../web/src/pages/settings/README.md)
+- [Shared Web Code](../web/src/shared/README.md)
+- [Web Components](../web/src/shared/components/README.md)
+- [Web Layout](../web/src/shared/layout/README.md)
+- [Web Utilities](../web/src/shared/utils/README.md)

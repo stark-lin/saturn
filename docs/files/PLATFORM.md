@@ -411,3 +411,19 @@ Business modules do not write directly to the local FS
 Business modules access storage capabilities via platform/storage by default
 platform/storage does not own Files business rules
 ```
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Platform Support](../../internal/platform/README.md)
+- [Audit Support](../../internal/platform/audit/README.md)
+- [Authentication and Authorization Support](../../internal/platform/auth/README.md)
+- [Configuration Support](../../internal/platform/config/README.md)
+- [Database Support](../../internal/platform/db/README.md)
+- [HTTP Support](../../internal/platform/httpx/README.md)
+- [Logging Support](../../internal/platform/logger/README.md)
+- [Redis Support](../../internal/platform/redis/README.md)
+- [Object Reference Support](../../internal/platform/ref/README.md)
+- [Search Support](../../internal/platform/search/README.md)
+- [Storage Support](../../internal/platform/storage/README.md)
+- [Storage Query Sources](../../internal/platform/storage/queries/README.md)

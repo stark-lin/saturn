@@ -186,3 +186,8 @@ Ops pages do not copy business module rules
 Platform/Auth does not generate business SQL
 Future platform capabilities should not be added as empty packages before real behavior exists
 ```
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Project README](../../README.md)

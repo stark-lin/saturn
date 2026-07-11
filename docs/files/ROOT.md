@@ -369,3 +369,8 @@ Redis is a required service
 The local FS volume is the default file blob storage
 Later stages may consider split deployment forms, but default dependency constraints are not altered
 ```
+
+## References
+
+- [Repository Structure Documents](README.md)
+- [Commands](../../cmd/README.md)

@@ -480,3 +480,10 @@ a certain field is relied upon by external log systems
 ```
 
 When asserting logs, only assert structured fields and values, not the full JSON string order.
+
+The local quality wrapper, `scripts/check.sh`, also runs `scripts/check-docs.sh` so documentation-reference failures are found before the Go checks complete.
+
+## References
+
+- [Project README](../README.md)
+- [Development Scripts](../scripts/README.md)

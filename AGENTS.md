@@ -24,7 +24,19 @@
 - Small docs, typo, formatting, or obvious local fixes can be done directly.
 - If behavior, architecture, API, config, commands, or deployment changes, update docs in the same change.
 - Code, identifiers, errors, logs, and comments must be in English.
-- Docs under `docs/` may be Chinese for now.
+- Documentation changes and newly created documentation must be written in English.
+
+## Documentation References
+
+- Every Git-tracked directory must contain a `README.md`, unless it matches an entry in `.saturn-docs-exemptions`.
+- Exemptions are limited to third-party dependencies, generated output, build artifacts, caches, test data, database migrations, and static-asset-only directories. Keep every exemption in the central configuration; do not add ad hoc exceptions.
+- Every `README.md` and every Markdown document under `docs/` must end with a `References` section. Use `## References` unless a first-level heading is necessary. Do not add body content after that section.
+- A directory README must link directly related design documents under `docs/` from its `References` section.
+- A design document under `docs/` must link the related directory README files from its `References` section, preferring directory links over implementation-file links.
+- README-to-design-document references are reciprocal: whenever either side links to the other, the target must link back in its own `References` section.
+- Keep `References` semantic and local. Include direct designs, implementation directories, dependencies, extensions, or replacements; do not use it as a general link collection.
+- When changing code, configuration, commands, deployment, behavior, architecture, or APIs, update the affected documentation and reciprocal references in the same change.
+- Run `sh scripts/check-docs.sh` after documentation changes. CI enforces README coverage, final `References` sections, valid relative reference links, reciprocal README/design links, and centrally declared exemptions.
 
 ## Frontend First Version
 
