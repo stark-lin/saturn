@@ -469,7 +469,7 @@ Key components:
 * Template Picker
 * Linked References Panel
 
-The current Notes page in `web/src` is already integrated with the owner-only `/api/notes` single-copy Markdown Note CRUD: the list uses server-side summary responses and is fixed to pagination with `limit=10`, `offset`, and the pagination control on the left of the footer adopts the previous/current/next logic consistent with Accounting; Markdown details are only loaded after an item is opened, and page-level notices display load or save errors independently; creation, saving, and deletion are all persisted to the server. Collections, templates, associations, RSS, and versions remain future capabilities.
+The current Notes page in `web/src` uses the owner-only `/api/notes` logical Note API: list/detail continue to show only the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. Delete is a server-side soft delete. Version list/read/restore and deleted-Note restore are available through the API but do not yet have dedicated controls in this first native HTML surface. Collections, templates, associations, and RSS remain future UI capabilities.
 
 ### 6.4 Accounting
 

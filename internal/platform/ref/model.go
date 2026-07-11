@@ -6,7 +6,8 @@ import "time"
 type ObjectType string
 
 const (
-	ObjectTypeNote           ObjectType = "note"
+	ObjectTypeNote           ObjectType = "nte-obj"
+	ObjectTypeNoteVersion    ObjectType = "version-obj"
 	ObjectTypeFileCollection ObjectType = "file_collection"
 	ObjectTypeFile           ObjectType = "file"
 	ObjectTypeEventAggregate ObjectType = "event_aggregate"

@@ -265,7 +265,11 @@ migrations
 ├── 000008_platform_import_export.sql
 ├── 000009_platform_storage.sql
 ├── 000010_llm.sql
-└── 000011_settings.sql
+├── 000011_settings.sql
+├── 000012_calendar_finished_status.sql
+├── 000013_llm_psql_queue.sql
+├── 000014_object_ref_search_indexes.sql
+└── 000015_notes_version_objects.sql
 ```
 
 Rules:

@@ -25,6 +25,7 @@ type AccountingReader interface {
 
 type NotesReader interface {
 	GetNote(ctx context.Context, actor auth.Principal, refCode string) (notes.Note, error)
+	GetVersion(ctx context.Context, actor auth.Principal, refCode string) (notes.Version, error)
 }
 
 type FilesReader interface {
@@ -128,8 +129,23 @@ func (r *BusinessReferenceResolver) payloadForObject(ctx context.Context, actor 
 		}
 		return map[string]any{
 			"ref_code": note.RefCode, "title": note.Title, "markdown": note.Markdown,
+			"current_version_ref": note.CurrentVersionRef, "version_number": note.CurrentVersionNumber,
 			"status": note.Status, "tags": note.Tags, "created_at": note.CreatedAt, "updated_at": note.UpdatedAt,
 		}, note.Tags, nil
+	case ref.ObjectTypeNoteVersion:
+		if r.notes == nil {
+			return nil, nil, ErrDependencyUnavailable
+		}
+		version, err := r.notes.GetVersion(ctx, actor, object.RefCode)
+		if err != nil {
+			return nil, nil, err
+		}
+		return map[string]any{
+			"ref_code": version.RefCode, "nte_ref": version.NoteRefCode,
+			"parent_version_ref": version.ParentVersionRef, "version_number": version.VersionNumber,
+			"title": version.Title, "content": version.Content, "content_type": version.ContentType,
+			"operation": version.Operation, "tags": version.Tags, "created_at": version.CreatedAt,
+		}, version.Tags, nil
 	case ref.ObjectTypeFileCollection:
 		if r.files == nil {
 			return nil, nil, ErrDependencyUnavailable

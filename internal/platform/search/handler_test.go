@@ -122,7 +122,7 @@ func TestHandlerSearchObjectRefsReturnsJSONList(t *testing.T) {
 	handler := NewHandler(resolver)
 	body := `{
 		"modules":["notes","files"],
-		"object_types":["note"],
+		"object_types":["nte-obj"],
 		"statuses":["draft"],
 		"tags":["backend","release"],
 		"created_at":{"from":"2026-05-01T00:00:00Z","to":"2026-06-01T00:00:00Z"},

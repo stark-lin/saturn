@@ -54,6 +54,8 @@ The development configuration provides a default JWT secret and injects an `admi
 
 During the development phase, when the application starts, it will automatically execute `migrations/*.sql` to initialize the PostgreSQL schema. Currently, formal migration version tables are not maintained, and production-style incremental migrations are not performed. If schema conflicts occur during the development phase, the handling method is to set `database.drop_tables=true` to drop old tables and rebuild; do not place valuable data in a development database where this option will be enabled.
 
+The NTE object-model upgrade adds the required `note_versions` table in `000015_notes_version_objects.sql`. A development database created before this migration is detected as incomplete and must be rebuilt with `database.drop_tables=true` under the current bootstrap policy. The migration includes legacy Note-to-v1 backfill SQL for controlled/manual migration use, but normal startup does not incrementally apply it to an already complete older schema.
+
 ---
 
 ## 3. GitHub Actions CI/CD

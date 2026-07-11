@@ -58,7 +58,7 @@ Notes is the main content area of the system, carrying personal notes, technical
 
 ```text
 Notes
-├── Note
+├── nte-obj (stable logical Note)
 │   ├── Private Note
 │   ├── Markdown Note
 │   ├── Technical Note
@@ -66,7 +66,11 @@ Notes
 │   ├── Snippet
 │   ├── Debug Log
 │   ├── Reference Note
-│   └── Revision
+│   └── Soft delete / restore
+├── version-obj
+│   ├── Immutable full snapshot
+│   ├── Independent NTE RefCode
+│   └── Version history / restore by copy
 │
 ├── Tag Projection (via ObjectRef)
 ├── Collection

@@ -11,13 +11,20 @@ import (
 
 const listNotesForOwner = `-- name: ListNotesForOwner :many
 
-SELECT n.id, n.owner_id, object_ref.ref_code, n.title, object_ref.status
+SELECT n.id, n.owner_id, object_ref.ref_code, version_ref.ref_code AS current_version_ref,
+       version.version_number, version.title, object_ref.status
 FROM notes AS n
 JOIN object_refs AS object_ref
   ON object_ref.owner_id = n.owner_id
- AND object_ref.object_type = 'note'
+ AND object_ref.object_type = 'nte-obj'
  AND object_ref.object_id = n.id
+JOIN note_versions AS version ON version.id = n.current_version_id
+JOIN object_refs AS version_ref
+  ON version_ref.owner_id = n.owner_id
+ AND version_ref.object_type = 'version-obj'
+ AND version_ref.object_id = version.id
 WHERE n.owner_id = $1
+  AND n.deleted_at IS NULL
 ORDER BY n.id DESC
 LIMIT $2 OFFSET $3
 `
@@ -29,22 +36,31 @@ type ListNotesForOwnerParams struct {
 }
 
 type ListNotesForOwnerRow struct {
-	ID      int64
-	OwnerID int64
-	RefCode string
-	Title   string
-	Status  string
+	ID                int64
+	OwnerID           int64
+	RefCode           string
+	CurrentVersionRef string
+	VersionNumber     int64
+	Title             string
+	Status            string
 }
 
 // This file defines typed Notes query templates for sqlc generation.
 //
-//	SELECT n.id, n.owner_id, object_ref.ref_code, n.title, object_ref.status
+//	SELECT n.id, n.owner_id, object_ref.ref_code, version_ref.ref_code AS current_version_ref,
+//	       version.version_number, version.title, object_ref.status
 //	FROM notes AS n
 //	JOIN object_refs AS object_ref
 //	  ON object_ref.owner_id = n.owner_id
-//	 AND object_ref.object_type = 'note'
+//	 AND object_ref.object_type = 'nte-obj'
 //	 AND object_ref.object_id = n.id
+//	JOIN note_versions AS version ON version.id = n.current_version_id
+//	JOIN object_refs AS version_ref
+//	  ON version_ref.owner_id = n.owner_id
+//	 AND version_ref.object_type = 'version-obj'
+//	 AND version_ref.object_id = version.id
 //	WHERE n.owner_id = $1
+//	  AND n.deleted_at IS NULL
 //	ORDER BY n.id DESC
 //	LIMIT $2 OFFSET $3
 func (q *Queries) ListNotesForOwner(ctx context.Context, arg ListNotesForOwnerParams) ([]ListNotesForOwnerRow, error) {
@@ -60,6 +76,8 @@ func (q *Queries) ListNotesForOwner(ctx context.Context, arg ListNotesForOwnerPa
 			&i.ID,
 			&i.OwnerID,
 			&i.RefCode,
+			&i.CurrentVersionRef,
+			&i.VersionNumber,
 			&i.Title,
 			&i.Status,
 		); err != nil {

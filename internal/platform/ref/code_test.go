@@ -12,6 +12,7 @@ func TestFormatCodeUsesFixedTypePrefixesAndGlobalHexSequence(t *testing.T) {
 		want       string
 	}{
 		{objectType: ObjectTypeNote, want: "NTE-0000002A"},
+		{objectType: ObjectTypeNoteVersion, want: "NTE-0000002A"},
 		{objectType: ObjectTypeFileCollection, want: "FIL-0000002A"},
 		{objectType: ObjectTypeFile, want: "FIL-0000002A"},
 		{objectType: ObjectTypeEventAggregate, want: "CAL-0000002A"},
@@ -43,7 +44,19 @@ func TestFormatCodeRejectsUnsupportedTypesAndOutOfRangeSequences(t *testing.T) {
 }
 
 func TestModuleForObjectTypeMapsSharedModulePrefixes(t *testing.T) {
-	module, err := ModuleForObjectType(ObjectTypeTransaction)
+	module, err := ModuleForObjectType(ObjectTypeNoteVersion)
+	if err != nil {
+		t.Fatalf("note version module: %v", err)
+	}
+	if module != ModuleNotes || !CodeMatchesObjectType("NTE-00000001", ObjectTypeNoteVersion) {
+		t.Fatalf("notes module = %q or version prefix mismatch", module)
+	}
+	if !CodeMatchesModule("NTE-00000001", ModuleNotes) ||
+		!CodeMatchesObjectType("NTE-00000001", ObjectTypeNote) ||
+		!CodeMatchesObjectType("NTE-00000001", ObjectTypeNoteVersion) {
+		t.Fatal("NTE prefix must validate the Notes module without distinguishing its object types")
+	}
+	module, err = ModuleForObjectType(ObjectTypeTransaction)
 	if err != nil {
 		t.Fatalf("transaction module: %v", err)
 	}

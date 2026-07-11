@@ -22,6 +22,7 @@ type objectDefinition struct {
 
 var objectDefinitions = map[ObjectType]objectDefinition{
 	ObjectTypeNote:           {module: ModuleNotes, prefix: "NTE"},
+	ObjectTypeNoteVersion:    {module: ModuleNotes, prefix: "NTE"},
 	ObjectTypeFileCollection: {module: ModuleFiles, prefix: "FIL"},
 	ObjectTypeFile:           {module: ModuleFiles, prefix: "FIL"},
 	ObjectTypeEventAggregate: {module: ModuleCalendar, prefix: "CAL"},
@@ -34,6 +35,7 @@ var objectDefinitions = map[ObjectType]objectDefinition{
 
 var objectTypeOrder = []ObjectType{
 	ObjectTypeNote,
+	ObjectTypeNoteVersion,
 	ObjectTypeFileCollection,
 	ObjectTypeFile,
 	ObjectTypeEventAggregate,
@@ -73,8 +75,20 @@ func NormalizeCode(code string) string {
 
 func CodeMatchesObjectType(code string, objectType ObjectType) bool {
 	definition, ok := objectDefinitions[objectType]
-	if !ok || !ValidCode(code) {
+	if !ok {
 		return false
 	}
-	return strings.HasPrefix(code, definition.prefix+"-")
+	return CodeMatchesModule(code, definition.module)
+}
+
+func CodeMatchesModule(code string, module Module) bool {
+	if !ValidCode(code) {
+		return false
+	}
+	for _, definition := range objectDefinitions {
+		if definition.module == module {
+			return strings.HasPrefix(code, definition.prefix+"-")
+		}
+	}
+	return false
 }

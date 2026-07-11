@@ -26,7 +26,7 @@ files:
 
 notes:
   notes
-  note_revisions
+  note_versions
   note_collections
   note_collection_items
   note_links
@@ -61,7 +61,7 @@ Explanation:
 ```text
 Whether the current migrations have created specific tables is subject to migrations.
 Migration-created reserved tables that do not have current runtime APIs are intentionally omitted from this runtime model summary.
-docs/api/NOTES.md currently fixes the contract to only require an owner-only, single copy of the current Markdown Note API; migrations/000004_notes.sql already provides the markdown and timestamp fields used by this contract; revision and collection-related behavior are future capabilities.
+The current Notes API uses `notes` for stable logical identity/current pointer/soft-delete state and `note_versions` for immutable complete Markdown snapshots. `migrations/000015_notes_version_objects.sql` backfills legacy content into v1 and registers separate `nte-obj` and `version-obj` ObjectRefs.
 ```
 
 ---
@@ -135,18 +135,22 @@ erDiagram
   notes {
     bigint id PK
     bigint owner_id FK
-    text title
-    text markdown
-    timestamp created_at
-    timestamp updated_at
+    bigint current_version_id FK
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz deleted_at "nullable"
   }
 
-  note_revisions {
+  note_versions {
     bigint id PK
     bigint note_id FK
-    bigint revision_number
-    text markdown
-    timestamp created_at
+    bigint parent_version_id FK "nullable"
+    bigint version_number
+    text title
+    text content
+    text content_type
+    text operation
+    timestamptz created_at
   }
 
   note_collections {
@@ -239,7 +243,7 @@ erDiagram
   users ||--o{ files : owns
 
   users ||--o{ notes : owns
-  notes ||--|{ note_revisions : revisions
+  notes ||--|{ note_versions : immutable_versions
   users ||--o{ note_collections : owns
   note_collections ||--o{ note_collection_items : items
   notes ||--o{ note_collection_items : collected_note
@@ -265,7 +269,7 @@ Explanation:
 | Identity / Audit | `users` is the main source of actors and owners; `users.username` is the unique login identifier, `users.email` can be null; `users.role` distinguishes `superuser` / `user` for permission isolation; `users.password_hash` only stores bcrypt password hashes, not plaintext passwords. JWT is the authentication bearer token, generated after password verification during login; middleware verifies the signature and checks the Redis session before injecting the Principal; the JWT itself is not persisted as a business resource relationship. `audit_logs` use `actor_type`, a nullable historical `actor_user_id`, and a non-nullable `target_ref_code`, but do not associate with users or business objects via foreign keys, ensuring audit evidence is retained even after objects are deleted. `SYS-00000000` only denotes system-level targets like logins and logouts. `READ` is only used for reads initiated by LLMs. The audit table rejects `UPDATE`, `DELETE`, and `TRUNCATE` via database triggers; it can only be inserted into and queried at runtime. |
 | ObjectRef | `object_refs` is the globally unified object registry and the authoritative source for `ref_code` and cross-module `title`, `tags`, and current `status` projections. `object_refs.id` is the cross-module universal object ID; `ref_code` is the stable, readable reference code for users, search, and LLMs; `object_type/object_id` map to the source business table. The business source and state transition rules of title/tag/status are still the responsibility of the source business module; business reads must still return to the source module's service / facade. |
 | Files | `file_collections` are similar to Accounting ledgers and own multiple immutable `files`. Both Collection and File are registered as `FIL-*` ObjectRefs, using the `file_collection` and `file` object_type respectively. File blobs point to `./objects/{FILE_REFCODE}/blob` in the local FS via `object_key`, and must be verified before downloading using the `sha256` and `blake3` in the metadata. When a Collection is deleted, the service cascades through the unified File delete process one by one and records the cascade reason. |
-| Notes | The current API only operates on a single copy of the current source content represented by `notes.markdown`, and uses owner-only access rules; it does not provide endpoints for versioning, recovery, sharing, or collection navigation. `note_revisions`, `note_links`, and `note_collection_items` express future domain capabilities and do not represent what the current API implements. |
+| Notes | `notes` is the mutable `nte-obj` source: stable owner identity, current-version pointer, timestamps, and `deleted_at`; it stores no title/body. `note_versions` contains immutable full snapshots and parent/version ordering metadata. Both tables map to independent `NTE-*` ObjectRefs through `nte-obj` and `version-obj`. Content updates and old-version restores insert a new version and advance the pointer. Logical deletion preserves both ObjectRefs and all snapshots. Collections and links remain outside the current API. |
 | Accounting | `accounts` are ledgers, and `transactions` are directly subordinated immutable entries. Both Account and Transaction are registered as `ACC-*` objects and project their tags to ObjectRef; a Transaction only allows `posted -> voided`, and single entries cannot be deleted. When deleting an Account, transactions are cascade-deleted following ledger deletion semantics, while the service cleans up corresponding object refs in the same transaction. `accounts.balance_cents` is a cache recalculated only from posted entries, and balance-related writes lock the account row first. |
 | Calendar | `event_aggregates` are event aggregates and can be created empty; `events` are specific schedule instances that must belong to an aggregate and can only be created via the parent aggregate scope. Both EventAggregate and Event are registered as `CAL-*` ObjectRefs and each project their tags to ObjectRef. Their metadata is immutable after creation; Event only stores `starts_at` and `duration_minutes`, and its status only allows `scheduled -> finished`, `scheduled -> voided`, and `finished -> voided`. The main CalendarView only returns scheduled events; aggregate details return all child events including finished / voided ones. Deletions are only allowed at the EventAggregate level, and the service cascades cleanup of child events and object refs, writing a DELETE audit for each cascade-deleted event. |
 

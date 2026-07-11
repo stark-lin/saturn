@@ -40,6 +40,34 @@ func TestServiceRegistersAndResolvesCanonicalReference(t *testing.T) {
 	if resolved.RefCode != object.RefCode {
 		t.Fatalf("resolved ref code = %q, want %q", resolved.RefCode, object.RefCode)
 	}
+
+	version, err := service.Register(context.Background(), Registration{
+		OwnerID: 7, ObjectType: ObjectTypeNoteVersion, ObjectID: 19,
+		Title: "Release notes v1", Tags: []string{"release"}, Status: "immutable",
+	})
+	if err != nil {
+		t.Fatalf("register note version ref: %v", err)
+	}
+	if version.RefCode != "NTE-00000002" || version.ObjectType != ObjectTypeNoteVersion {
+		t.Fatalf("registered version = %#v, want second code in shared NTE namespace", version)
+	}
+}
+
+func TestServiceNotesModuleSearchExpandsBothNTEObjectTypes(t *testing.T) {
+	repo := newFakeRepository()
+	service := NewService(repo)
+
+	_, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, MetadataSearchQuery{
+		Modules: []Module{ModuleNotes}, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("search Notes metadata: %v", err)
+	}
+	if len(repo.searchQuery.ObjectTypes) != 2 ||
+		repo.searchQuery.ObjectTypes[0] != ObjectTypeNote ||
+		repo.searchQuery.ObjectTypes[1] != ObjectTypeNoteVersion {
+		t.Fatalf("Notes object types = %#v, want nte-obj and version-obj", repo.searchQuery.ObjectTypes)
+	}
 }
 
 func TestServiceResolveMetadataIsOwnerOnly(t *testing.T) {

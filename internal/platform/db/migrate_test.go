@@ -215,7 +215,7 @@ func TestBootstrapSchemaWithPostgreSQL(t *testing.T) {
 		t.Fatalf("bootstrap schema: %v", err)
 	}
 
-	for _, tableName := range []string{"users", "audit_logs", "files", "notes", "accounts", "events", "llm_requests", "system_settings", "user_preferences"} {
+	for _, tableName := range []string{"users", "audit_logs", "files", "notes", "note_versions", "accounts", "events", "llm_requests", "system_settings", "user_preferences"} {
 		t.Run(tableName, func(t *testing.T) {
 			var exists bool
 			err := handle.DB.QueryRowContext(ctx, `
