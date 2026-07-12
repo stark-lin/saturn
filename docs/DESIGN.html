@@ -1691,8 +1691,9 @@
   <link rel="stylesheet" href="../web/src/app/styles.css" />
   <style>
     /*
-      The preview uses the real web client stylesheet above. The rules below are
-      only for documentation-only examples that are not yet shared app primitives.
+      The real web client stylesheet above is the source of truth for the shell
+      and shared primitives. The rules below are only for documentation examples
+      that are not yet shared app primitives.
     */
 
     .main-view {
@@ -1954,6 +1955,10 @@
 <body>
   <div class="page">
     <header class="topbar surface fixed-panel" aria-label="SATURN top bar">
+      <button class="rack-toggle" type="button" aria-label="Open Control Rack" aria-expanded="false" aria-controls="control-rack">
+        <span></span><span></span><span></span>
+      </button>
+
       <div class="brand" aria-label="SATURN Home">
         <span class="brand-mark" aria-hidden="true"></span>
         <div>
@@ -1976,7 +1981,7 @@
     </header>
 
     <div class="app-layout">
-      <aside class="sidebar surface fixed-panel" aria-label="Sidebar">
+      <aside class="sidebar surface fixed-panel" id="control-rack" aria-label="Sidebar">
         <h2 class="rack-title">Control Rack</h2>
         <nav class="nav-list" aria-label="Primary navigation">
           <button class="nav-link" type="button" data-view="dashboard" aria-current="page"><span class="nav-label">Dashboard</span><span class="code">DASH</span></button>
@@ -2531,6 +2536,38 @@
     </div>
   </div>
   <script>
+    (() => {
+      const page = document.querySelector(".page");
+      const rackToggle = document.querySelector(".rack-toggle");
+      const controlRack = document.querySelector("#control-rack");
+
+      if (!page || !rackToggle || !controlRack) {
+        return;
+      }
+
+      function setControlRackExpanded(isExpanded) {
+        page.classList.toggle("page--rack-open", isExpanded);
+        rackToggle.setAttribute("aria-expanded", String(isExpanded));
+        rackToggle.setAttribute("aria-label", isExpanded ? "Close Control Rack" : "Open Control Rack");
+      }
+
+      rackToggle.addEventListener("click", () => {
+        setControlRackExpanded(!page.classList.contains("page--rack-open"));
+      });
+
+      controlRack.addEventListener("click", (event) => {
+        if (event.target.closest(".nav-link")) {
+          setControlRackExpanded(false);
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          setControlRackExpanded(false);
+        }
+      });
+    })();
+
     (() => {
       const timeNode = document.querySelector("[data-clock-time]");
       const dateNode = document.querySelector("[data-clock-date]");

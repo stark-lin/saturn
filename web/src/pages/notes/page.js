@@ -211,15 +211,10 @@ export function renderNotesPage(target) {
   source.spellcheck = false;
   source.setAttribute("aria-label", "Markdown note source");
   sourceField.append(source);
-  const preview = renderSurface("article", { className: "note-preview", raised: true, label: "Markdown preview" });
-  const history = renderSurface("section", { className: "note-history", raised: true, label: "Note version history" });
-  const historyHeader = el("header", "note-history__head");
-  const historyTitle = document.createElement("strong");
-  historyTitle.textContent = "Version History";
-  const historyStatus = el("span", "note-history__status");
-  historyStatus.textContent = "Select History to load versions.";
-  historyStatus.setAttribute("aria-live", "polite");
-  historyHeader.append(historyTitle, historyStatus);
+  const preview = el("article", "note-preview");
+  preview.setAttribute("aria-label", "Markdown preview");
+  const history = el("section", "note-history");
+  history.setAttribute("aria-label", "Note version history");
   const historyLayout = el("div", "note-history__layout");
   const historyList = el("div", "note-history__list");
   historyList.setAttribute("aria-label", "Note versions");
@@ -228,7 +223,7 @@ export function renderNotesPage(target) {
   historyDetailEmpty.textContent = "Select a version to inspect its immutable content snapshot.";
   historyDetail.append(historyDetailEmpty);
   historyLayout.append(historyList, historyDetail);
-  history.append(historyHeader, historyLayout);
+  history.append(historyLayout);
   editorPanel.append(sourceField, preview, history);
 
   const editorActions = el("div", "note-editor-actions");
@@ -333,7 +328,6 @@ export function renderNotesPage(target) {
     state.historyVersions = [];
     state.selectedVersionRef = null;
     historyList.replaceChildren();
-    historyStatus.textContent = "History has not been loaded.";
     historyDetail.replaceChildren(historyDetailEmpty);
   }
 
@@ -343,9 +337,6 @@ export function renderNotesPage(target) {
       state.currentNote?.current_version_ref,
       openHistoryVersion,
     )));
-    historyStatus.textContent = state.historyVersions.length === 1
-      ? "1 immutable version"
-      : `${state.historyVersions.length} immutable versions`;
   }
 
   async function loadHistory() {
@@ -354,7 +345,6 @@ export function renderNotesPage(target) {
     }
     const noteRefCode = state.currentNote.ref_code;
     const requestNumber = ++state.historyRequestNumber;
-    historyStatus.textContent = "Loading versions...";
     historyList.replaceChildren();
     historyDetail.replaceChildren(historyDetailEmpty);
     try {
@@ -368,7 +358,6 @@ export function renderNotesPage(target) {
       if (requestNumber !== state.historyRequestNumber) {
         return;
       }
-      historyStatus.textContent = "Unable to load history.";
       setNotice("Unable to Load Note History", error.message, "warning");
     }
   }
