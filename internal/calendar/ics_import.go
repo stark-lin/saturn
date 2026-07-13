@@ -17,9 +17,11 @@ import (
 )
 
 const (
-	MaxICSFileBytes            int64 = 1 << 20
-	maxICSImportedEvents             = 512
-	maxICSEvaluatedOccurrences       = 65536
+	MaxICSFileBytes                 int64 = 1 << 20
+	maxICSImportedEvents                  = 512
+	maxICSEvaluatedOccurrences            = 65536
+	minimumICSImportedEventDuration       = time.Second
+	icsUnsupportedContentHeading          = "Unsupported iCalendar content:"
 )
 
 var (
@@ -33,8 +35,9 @@ type ImportEventAggregateInput struct {
 }
 
 type parsedICSImport struct {
-	Timezone string
-	Events   []CreateEventInput
+	Timezone    string
+	Description string
+	Events      []CreateEventInput
 }
 
 type icsEventGroup struct {
@@ -57,6 +60,7 @@ type icsOccurrence struct {
 	StartsAt      time.Time
 	Duration      icsOccurrenceDuration
 	Metadata      EventMetadata
+	Unsupported   []string
 }
 
 type icsRDate struct {
@@ -82,6 +86,7 @@ type icsOccurrenceOverride struct {
 	Start        *icsTimeValue
 	Duration     *icsOccurrenceDuration
 	Metadata     icsMetadataPatch
+	Unsupported  []string
 	Matched      bool
 }
 
@@ -98,6 +103,10 @@ func parseICSImport(input ImportEventAggregateInput) (parsedICSImport, error) {
 	}
 
 	defaultLocation, timezoneName, err := icsCalendarLocation(calendar)
+	if err != nil {
+		return parsedICSImport{}, ErrInvalidICSImport
+	}
+	calendarUnsupported, err := icsUnsupportedCalendarContent(calendar)
 	if err != nil {
 		return parsedICSImport{}, ErrInvalidICSImport
 	}
@@ -136,7 +145,11 @@ func parseICSImport(input ImportEventAggregateInput) (parsedICSImport, error) {
 		}
 		return events[i].StartsAt.Before(events[j].StartsAt)
 	})
-	return parsedICSImport{Timezone: timezoneName, Events: events}, nil
+	return parsedICSImport{
+		Timezone:    timezoneName,
+		Description: appendICSUnsupportedContent("", calendarUnsupported),
+		Events:      events,
+	}, nil
 }
 
 func icsCalendarLocation(calendar *ics.Calendar) (*time.Location, string, error) {
@@ -200,7 +213,7 @@ func expandICSEventGroup(group icsEventGroup, defaultLocation *time.Location) ([
 	if err != nil {
 		return nil, "", err
 	}
-	masterDuration, present, err := parseICSEventDuration(group.Master, masterStart, defaultLocation)
+	masterDuration, present, durationUnsupported, err := parseICSEventDuration(group.Master, masterStart, defaultLocation)
 	if err != nil {
 		return nil, "", err
 	}
@@ -214,6 +227,11 @@ func expandICSEventGroup(group icsEventGroup, defaultLocation *time.Location) ([
 	if err != nil {
 		return nil, "", err
 	}
+	masterUnsupported, err := icsUnsupportedEventContent(group.Master)
+	if err != nil {
+		return nil, "", err
+	}
+	masterUnsupported = appendUniqueICSContent(masterUnsupported, durationUnsupported...)
 
 	overrides, err := parseICSOverrides(group.Overrides, masterStart.AllDay, defaultLocation)
 	if err != nil {
@@ -241,6 +259,7 @@ func expandICSEventGroup(group icsEventGroup, defaultLocation *time.Location) ([
 			StartsAt:      originalStart,
 			Duration:      masterDuration,
 			Metadata:      masterMetadata,
+			Unsupported:   append([]string(nil), masterUnsupported...),
 		}
 		if duration, exists := rdateDurations[icsOccurrenceKey(originalStart)]; exists {
 			occurrence.Duration = duration
@@ -256,6 +275,10 @@ func expandICSEventGroup(group icsEventGroup, defaultLocation *time.Location) ([
 		if occurrence.Metadata.Title == "" || !endsAt.After(occurrence.StartsAt) {
 			return nil, "", ErrInvalidICSImport
 		}
+		occurrence.Metadata.Description = appendICSUnsupportedContent(
+			occurrence.Metadata.Description,
+			occurrence.Unsupported,
+		)
 		events = append(events, CreateEventInput{
 			Metadata: occurrence.Metadata,
 			StartsAt: occurrence.StartsAt,
@@ -344,11 +367,16 @@ func parseICSOverrides(events []*ics.VEvent, masterAllDay bool, defaultLocation 
 			return nil, ErrInvalidICSImport
 		}
 		seen[key] = struct{}{}
+		unsupported, err := icsUnsupportedEventContent(event)
+		if err != nil {
+			return nil, err
+		}
 
 		override := &icsOccurrenceOverride{
 			RecurrenceID: recurrenceID,
 			Cancelled:    icsEventCancelled(event),
 			Metadata:     icsEventMetadataPatch(event),
+			Unsupported:  unsupported,
 		}
 		rangeValue, err := icsSingleParameter(recurrenceProperty, string(ics.ParameterRange))
 		if err != nil {
@@ -371,10 +399,11 @@ func parseICSOverrides(events []*ics.VEvent, masterAllDay bool, defaultLocation 
 		if override.Start != nil {
 			durationStart = *override.Start
 		}
-		duration, present, err := parseICSEventDuration(event, durationStart, defaultLocation)
+		duration, present, durationUnsupported, err := parseICSEventDuration(event, durationStart, defaultLocation)
 		if err != nil {
 			return nil, err
 		}
+		override.Unsupported = appendUniqueICSContent(override.Unsupported, durationUnsupported...)
 		if present {
 			override.Duration = &duration
 		}
@@ -409,6 +438,7 @@ func applyICSOverrides(occurrence icsOccurrence, overrides []*icsOccurrenceOverr
 				occurrence.Duration = *override.Duration
 			}
 			occurrence.Metadata = applyICSMetadataPatch(occurrence.Metadata, override.Metadata)
+			occurrence.Unsupported = append(occurrence.Unsupported, override.Unsupported...)
 			cancelled = override.Cancelled
 			continue
 		}
@@ -422,6 +452,7 @@ func applyICSOverrides(occurrence icsOccurrence, overrides []*icsOccurrenceOverr
 			occurrence.Duration = *override.Duration
 		}
 		occurrence.Metadata = applyICSMetadataPatch(occurrence.Metadata, override.Metadata)
+		occurrence.Unsupported = append(occurrence.Unsupported, override.Unsupported...)
 		cancelled = override.Cancelled
 	}
 	return occurrence, cancelled, nil
@@ -527,10 +558,7 @@ func parseICSTimeValue(property *ics.IANAProperty, value string, defaultLocation
 	if location == nil {
 		location = time.UTC
 	}
-	if timezone != "" {
-		if strings.HasSuffix(value, "Z") {
-			return icsTimeValue{}, ErrInvalidICSImport
-		}
+	if timezone != "" && !strings.HasSuffix(value, "Z") {
 		location, err = time.LoadLocation(timezone)
 		if err != nil {
 			return icsTimeValue{}, ErrInvalidICSImport
@@ -554,34 +582,48 @@ func parseICSTimeValue(property *ics.IANAProperty, value string, defaultLocation
 	return icsTimeValue{Time: parsed.Truncate(time.Second), AllDay: allDay}, nil
 }
 
-func parseICSEventDuration(event *ics.VEvent, start icsTimeValue, defaultLocation *time.Location) (icsOccurrenceDuration, bool, error) {
+func parseICSEventDuration(
+	event *ics.VEvent,
+	start icsTimeValue,
+	defaultLocation *time.Location,
+) (icsOccurrenceDuration, bool, []string, error) {
 	endProperty := event.GetProperty(ics.ComponentPropertyDtEnd)
 	durationProperty := event.GetProperty(ics.ComponentPropertyDuration)
 	if endProperty != nil && durationProperty != nil {
-		return icsOccurrenceDuration{}, false, ErrInvalidICSImport
+		return icsOccurrenceDuration{}, false, nil, ErrInvalidICSImport
 	}
 	if endProperty != nil {
 		end, err := parseRequiredICSTime(endProperty, defaultLocation)
-		if err != nil || end.AllDay != start.AllDay || !end.Time.After(start.Time) {
-			return icsOccurrenceDuration{}, false, ErrInvalidICSImport
+		if err != nil || end.AllDay != start.AllDay || end.Time.Before(start.Time) {
+			return icsOccurrenceDuration{}, false, nil, ErrInvalidICSImport
+		}
+		if end.Time.Equal(start.Time) {
+			serialized, err := serializeICSContent(endProperty)
+			if err != nil {
+				return icsOccurrenceDuration{}, false, nil, err
+			}
+			if start.AllDay {
+				return icsOccurrenceDuration{CalendarDays: 1}, true, []string{serialized}, nil
+			}
+			return icsOccurrenceDuration{Elapsed: minimumICSImportedEventDuration}, true, []string{serialized}, nil
 		}
 		if start.AllDay {
 			days := icsCalendarDayDifference(start.Time, end.Time)
 			if days < 1 {
-				return icsOccurrenceDuration{}, false, ErrInvalidICSImport
+				return icsOccurrenceDuration{}, false, nil, ErrInvalidICSImport
 			}
-			return icsOccurrenceDuration{CalendarDays: days}, true, nil
+			return icsOccurrenceDuration{CalendarDays: days}, true, nil, nil
 		}
-		return icsOccurrenceDuration{Elapsed: end.Time.Sub(start.Time)}, true, nil
+		return icsOccurrenceDuration{Elapsed: end.Time.Sub(start.Time)}, true, nil, nil
 	}
 	if durationProperty != nil {
 		duration, err := parseICSDuration(durationProperty.Value)
 		if err != nil || start.AllDay && duration.Elapsed != 0 {
-			return icsOccurrenceDuration{}, false, ErrInvalidICSImport
+			return icsOccurrenceDuration{}, false, nil, ErrInvalidICSImport
 		}
-		return duration, true, nil
+		return duration, true, nil, nil
 	}
-	return icsOccurrenceDuration{}, false, nil
+	return icsOccurrenceDuration{}, false, nil, nil
 }
 
 func parseICSDuration(value string) (icsOccurrenceDuration, error) {
@@ -698,6 +740,181 @@ func icsTextPropertyPatch(event *ics.VEvent, property ics.ComponentProperty) ics
 		return icsStringPatch{}
 	}
 	return icsStringPatch{Value: value.Value, Set: true}
+}
+
+type icsSerializableContent interface {
+	SerializeTo(io.Writer, *ics.SerializationConfiguration) error
+}
+
+func icsUnsupportedCalendarContent(calendar *ics.Calendar) ([]string, error) {
+	unsupported := make([]string, 0)
+	occurrences := make(map[string]int)
+	for index := range calendar.CalendarProperties {
+		property := &calendar.CalendarProperties[index]
+		occurrence := occurrences[property.IANAToken]
+		occurrences[property.IANAToken]++
+		if icsCalendarPropertySupported(property, occurrence) {
+			continue
+		}
+		serialized, err := serializeICSContent(property)
+		if err != nil {
+			return nil, err
+		}
+		unsupported = append(unsupported, serialized)
+	}
+	for _, component := range calendar.Components {
+		if _, isEvent := component.(*ics.VEvent); isEvent {
+			continue
+		}
+		serialized, err := serializeICSContent(component)
+		if err != nil {
+			return nil, err
+		}
+		unsupported = append(unsupported, serialized)
+	}
+	return unsupported, nil
+}
+
+func icsCalendarPropertySupported(property *ics.CalendarProperty, occurrence int) bool {
+	switch property.IANAToken {
+	case string(ics.PropertyVersion), string(ics.PropertyProductId),
+		string(ics.PropertyXWRTimezone), string(ics.PropertyTimezoneId):
+		return occurrence == 0 && len(property.ICalParameters) == 0
+	default:
+		return false
+	}
+}
+
+func icsUnsupportedEventContent(event *ics.VEvent) ([]string, error) {
+	unsupported := make([]string, 0)
+	occurrences := make(map[string]int)
+	for index := range event.Properties {
+		property := &event.Properties[index]
+		occurrence := occurrences[property.IANAToken]
+		occurrences[property.IANAToken]++
+		if icsEventPropertySupported(property, occurrence) {
+			continue
+		}
+		serialized, err := serializeICSContent(property)
+		if err != nil {
+			return nil, err
+		}
+		unsupported = append(unsupported, serialized)
+	}
+	for _, component := range event.Components {
+		serialized, err := serializeICSContent(component)
+		if err != nil {
+			return nil, err
+		}
+		unsupported = append(unsupported, serialized)
+	}
+	return unsupported, nil
+}
+
+func serializeICSContent(content icsSerializableContent) (string, error) {
+	serialization := &ics.SerializationConfiguration{
+		MaxLength:         math.MaxInt,
+		NewLine:           "\n",
+		PropertyMaxLength: math.MaxInt,
+	}
+	var serialized strings.Builder
+	if err := content.SerializeTo(&serialized, serialization); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(serialized.String(), serialization.NewLine), nil
+}
+
+func icsEventPropertySupported(property *ics.IANAProperty, occurrence int) bool {
+	switch property.IANAToken {
+	case string(ics.ComponentPropertyRdate), string(ics.ComponentPropertyExdate):
+	case string(ics.ComponentPropertyUniqueId), string(ics.ComponentPropertyDtstamp),
+		string(ics.ComponentPropertySummary), string(ics.ComponentPropertyDescription),
+		string(ics.ComponentPropertyLocation), string(ics.ComponentPropertyDtStart),
+		string(ics.ComponentPropertyDtEnd), string(ics.ComponentPropertyDuration),
+		string(ics.ComponentPropertyRrule), string(ics.ComponentPropertyRecurrenceId),
+		string(ics.ComponentPropertyStatus):
+		if occurrence > 0 {
+			return false
+		}
+	default:
+		return false
+	}
+
+	switch property.IANAToken {
+	case string(ics.ComponentPropertyDtStart), string(ics.ComponentPropertyDtEnd),
+		string(ics.ComponentPropertyRdate), string(ics.ComponentPropertyExdate):
+		if icsPropertyCombinesTimezoneWithUTCValue(property) {
+			return false
+		}
+		return icsPropertyUsesOnlySingleParameters(
+			property,
+			string(ics.ParameterValue),
+			string(ics.ParameterTzid),
+		)
+	case string(ics.ComponentPropertyRecurrenceId):
+		if icsPropertyCombinesTimezoneWithUTCValue(property) {
+			return false
+		}
+		return icsPropertyUsesOnlySingleParameters(
+			property,
+			string(ics.ParameterValue),
+			string(ics.ParameterTzid),
+			string(ics.ParameterRange),
+		)
+	case string(ics.ComponentPropertyStatus):
+		return len(property.ICalParameters) == 0 &&
+			strings.EqualFold(strings.TrimSpace(property.Value), string(ics.ObjectStatusCancelled))
+	default:
+		return len(property.ICalParameters) == 0
+	}
+}
+
+func icsPropertyCombinesTimezoneWithUTCValue(property *ics.IANAProperty) bool {
+	timezones, exists := property.ICalParameters[string(ics.ParameterTzid)]
+	return exists && len(timezones) != 0 && strings.Contains(strings.ToUpper(property.Value), "Z")
+}
+
+func icsPropertyUsesOnlySingleParameters(property *ics.IANAProperty, supportedNames ...string) bool {
+	supported := make(map[string]struct{}, len(supportedNames))
+	for _, name := range supportedNames {
+		supported[name] = struct{}{}
+	}
+	for name, values := range property.ICalParameters {
+		if _, exists := supported[name]; !exists || len(values) != 1 {
+			return false
+		}
+	}
+	return true
+}
+
+func appendUniqueICSContent(existing []string, additions ...string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(additions))
+	for _, content := range existing {
+		seen[content] = struct{}{}
+	}
+	for _, content := range additions {
+		if content == "" {
+			continue
+		}
+		if _, exists := seen[content]; exists {
+			continue
+		}
+		existing = append(existing, content)
+		seen[content] = struct{}{}
+	}
+	return existing
+}
+
+func appendICSUnsupportedContent(description string, unsupported []string) string {
+	description = strings.TrimSpace(description)
+	if len(unsupported) == 0 {
+		return description
+	}
+	block := icsUnsupportedContentHeading + "\n" + strings.Join(unsupported, "\n")
+	if description == "" {
+		return block
+	}
+	return description + "\n\n" + block
 }
 
 func icsEventCancelled(event *ics.VEvent) bool {

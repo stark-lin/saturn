@@ -60,6 +60,7 @@ func TestServiceImportsICSAsOneTransactionalAggregateCreation(t *testing.T) {
 	input := `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Saturn Test//EN
+METHOD:PUBLISH
 X-WR-TIMEZONE:Australia/Sydney
 BEGIN:VEVENT
 UID:imported
@@ -82,7 +83,8 @@ END:VCALENDAR
 	if transactions.calls != 1 {
 		t.Fatalf("transaction calls = %d, want 1", transactions.calls)
 	}
-	if detail.Aggregate.Metadata.Title != "Imported calendar" || detail.Aggregate.Metadata.Timezone != "Australia/Sydney" {
+	if detail.Aggregate.Metadata.Title != "Imported calendar" || detail.Aggregate.Metadata.Timezone != "Australia/Sydney" ||
+		!strings.Contains(detail.Aggregate.Metadata.Description, "METHOD:PUBLISH") {
 		t.Fatalf("aggregate = %#v", detail.Aggregate)
 	}
 	if len(detail.Events) != 2 || len(repo.events) != 2 {

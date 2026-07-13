@@ -172,12 +172,16 @@ DTSTART     -> Event.starts_at
 DTEND or DURATION -> Event.ends_at
 ```
 
-An all-day `DTSTART;VALUE=DATE` without `DTEND` or `DURATION` is treated as one calendar day. A date-time event must provide `DTEND` or a positive `DURATION`. `DTEND` remains exclusive for all-day events. Imported Events have empty tags and `scheduled` status.
+Unsupported VCALENDAR properties and non-VEVENT components are preserved in `EventAggregate.metadata.description` under an `Unsupported iCalendar content:` block. Structural `VERSION` / `PRODID` and the supported calendar timezone property are not copied. This preserves content such as `CALSCALE`, `METHOD`, `X-WR-*`, and an unused custom `VTIMEZONE` without treating it as Calendar business data.
+
+VEVENT properties that are not mapped to Event fields or recurrence semantics are preserved in `Event.metadata.description` under the same heading. The block contains normalized ICS content lines in source order; unsupported parameters on otherwise supported properties and nested components such as `VALARM` are also preserved. Structural `UID` and `DTSTAMP` properties are not copied. Master content is inherited by expanded occurrences, while override content is added only to the occurrences affected by that override.
+
+An all-day `DTSTART;VALUE=DATE` without `DTEND` or `DURATION` is treated as one calendar day. A date-time event must normally provide `DTEND` or a positive `DURATION`. When `DTEND` exactly equals `DTSTART`, import represents the point event with a one-second duration, or one calendar day for an all-day event, and preserves the original `DTEND` in the Event description. Earlier end times remain invalid. `DTEND` remains exclusive for all-day events. Imported Events have empty tags and `scheduled` status.
 
 Time and timezone rules:
 
 ```text
-UTC values ending in Z are preserved as absolute timestamps.
+UTC values ending in Z are preserved as absolute timestamps. If a value redundantly combines TZID with a trailing Z, Z takes precedence and the original property is preserved in the Event description.
 TZID values must resolve through the server's IANA timezone database.
 X-WR-TIMEZONE or TIMEZONE-ID supplies the default location for floating values and is projected to aggregate metadata.timezone.
 If no calendar default or TZID is supplied, floating values are interpreted as UTC.

@@ -201,6 +201,187 @@ END:VCALENDAR
 	}
 }
 
+func TestParseICSImportPreservesUnsupportedEventContentInDescription(t *testing.T) {
+	input := `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Saturn Test//EN
+BEGIN:VEVENT
+UID:unsupported-content
+DTSTAMP:20260701T000000Z
+DTSTART:20260706T090000Z
+DTEND:20260706T100000Z
+SUMMARY;LANGUAGE=en:Planning
+DESCRIPTION:Agenda
+ORGANIZER;CN=Alice:mailto:alice@example.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;CN=Bob:mailto:bob@example.com
+X-SATURN-COLOR:blue
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER:-PT15M
+DESCRIPTION:Reminder
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+`
+
+	parsed, err := parseICSImport(ImportEventAggregateInput{Title: "Imported", Body: strings.NewReader(input)})
+	if err != nil {
+		t.Fatalf("parse ICS import: %v", err)
+	}
+	if len(parsed.Events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(parsed.Events))
+	}
+	wantDescription := `Agenda
+
+Unsupported iCalendar content:
+SUMMARY;LANGUAGE=en:Planning
+ORGANIZER;CN=Alice:mailto:alice@example.com
+ATTENDEE;CN=Bob;ROLE=REQ-PARTICIPANT:mailto:bob@example.com
+X-SATURN-COLOR:blue
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER:-PT15M
+DESCRIPTION:Reminder
+END:VALARM`
+	if got := parsed.Events[0].Metadata.Description; got != wantDescription {
+		t.Fatalf("description = %q, want %q", got, wantDescription)
+	}
+}
+
+func TestParseICSImportPreservesMasterAndOverrideUnsupportedContent(t *testing.T) {
+	input := `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Saturn Test//EN
+BEGIN:VEVENT
+UID:unsupported-override
+DTSTAMP:20260701T000000Z
+DTSTART:20260706T090000Z
+DTEND:20260706T100000Z
+RRULE:FREQ=DAILY;COUNT=2
+SUMMARY:Planning
+DESCRIPTION:Master notes
+ORGANIZER:mailto:alice@example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:unsupported-override
+DTSTAMP:20260701T000000Z
+RECURRENCE-ID:20260707T090000Z
+DESCRIPTION:Override notes
+COMMENT:Bring documents
+END:VEVENT
+END:VCALENDAR
+`
+
+	parsed, err := parseICSImport(ImportEventAggregateInput{Title: "Imported", Body: strings.NewReader(input)})
+	if err != nil {
+		t.Fatalf("parse ICS import: %v", err)
+	}
+	if len(parsed.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(parsed.Events))
+	}
+	wantFirst := "Master notes\n\nUnsupported iCalendar content:\nORGANIZER:mailto:alice@example.com"
+	wantSecond := "Override notes\n\nUnsupported iCalendar content:\nORGANIZER:mailto:alice@example.com\nCOMMENT:Bring documents"
+	if parsed.Events[0].Metadata.Description != wantFirst {
+		t.Fatalf("first description = %q, want %q", parsed.Events[0].Metadata.Description, wantFirst)
+	}
+	if parsed.Events[1].Metadata.Description != wantSecond {
+		t.Fatalf("second description = %q, want %q", parsed.Events[1].Metadata.Description, wantSecond)
+	}
+}
+
+func TestParseICSImportAcceptsPublishedCalendarWithRedundantUTCTimezones(t *testing.T) {
+	input := `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GenericGenerator//TestSchedule//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Dummy Calendar Name
+X-WR-RELCALID:dummy-id-fake@domain.com
+BEGIN:VTIMEZONE
+TZID:Custom/Timezone
+X-LIC-LOCATION:Custom/Loc
+BEGIN:STANDARD
+TZOFFSETFROM:+9900
+TZOFFSETTO:+8900
+TZNAME:DST
+DTSTART:19700405T030000
+RRULE:FREQ=DAILY;BYMONTH=4;BYDAY=1SU
+END:STANDARD
+BEGIN:DAYLIGHT
+TZOFFSETFROM:+8900
+TZOFFSETTO:+9900
+TZNAME:DST2
+DTSTART:19701004T020000
+RRULE:FREQ=DAILY;BYMONTH=10;BYDAY=1SU
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:dummy-uid-event-one@domain.com
+DTSTAMP:20991231T100000Z
+SUMMARY:DUMMY EVENT TITLE
+DESCRIPTION:Event Description Placeholder Text Here
+COMMENT:Marker to show last update timestamp
+DTSTART;TZID=UTC:20991231T090000Z
+DTEND;TZID=UTC:20991231T090000Z
+CATEGORIES:AcadCalendar
+SEQUENCE:0
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+END:VEVENT
+BEGIN:VEVENT
+UID:dummy-uid-event-two@domain.com
+DTSTAMP:20991231T100000Z
+SUMMARY:DUMMY EVENT TITLE
+DESCRIPTION:Event Description Placeholder Text Here
+COMMENT:Class meeting placeholder
+DTSTART;TZID=UTC:20991231T130000Z
+DTEND;TZID=UTC:20991231T150000Z
+RRULE:FREQ=WEEKLY;UNTIL=20991231T135900Z;BYDAY=WE
+LOCATION:Generic Location
+GEO:-00.0000000;000.0000000
+CATEGORIES:Classes
+SEQUENCE:0
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+`
+
+	parsed, err := parseICSImport(ImportEventAggregateInput{Title: "Imported", Body: strings.NewReader(input)})
+	if err != nil {
+		t.Fatalf("parse ICS import: %v", err)
+	}
+	if len(parsed.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(parsed.Events))
+	}
+	if got := parsed.Events[0].EndsAt.Sub(parsed.Events[0].StartsAt); got != time.Second {
+		t.Fatalf("zero-duration compatibility duration = %s, want 1s", got)
+	}
+	for _, content := range []string{
+		"CALSCALE:GREGORIAN",
+		"METHOD:PUBLISH",
+		"X-WR-CALNAME:Dummy Calendar Name",
+		"BEGIN:VTIMEZONE",
+		"TZID:Custom/Timezone",
+		"END:VTIMEZONE",
+	} {
+		if !strings.Contains(parsed.Description, content) {
+			t.Fatalf("aggregate description %q does not contain %q", parsed.Description, content)
+		}
+	}
+	for _, content := range []string{
+		"DTSTART;TZID=UTC:20991231T090000Z",
+		"DTEND;TZID=UTC:20991231T090000Z",
+		"COMMENT:Marker to show last update timestamp",
+		"CATEGORIES:AcadCalendar",
+		"STATUS:CONFIRMED",
+	} {
+		if !strings.Contains(parsed.Events[0].Metadata.Description, content) {
+			t.Fatalf("event description %q does not contain %q", parsed.Events[0].Metadata.Description, content)
+		}
+	}
+}
+
 func TestParseICSImportRejectsUnboundedAndMoreThan512Events(t *testing.T) {
 	for _, test := range []struct {
 		name string

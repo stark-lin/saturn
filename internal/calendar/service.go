@@ -71,8 +71,9 @@ func (s *Service) ImportEventAggregate(ctx context.Context, actor auth.Principal
 	}
 	return s.createEventAggregateWithEvents(ctx, actor, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{
-			Title:    input.Title,
-			Timezone: parsed.Timezone,
+			Title:       input.Title,
+			Description: parsed.Description,
+			Timezone:    parsed.Timezone,
 		},
 	}, parsed.Events)
 }
