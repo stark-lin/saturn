@@ -2,7 +2,7 @@
 
 ## 1. Ownership
 
-Calendar owns the HTTP contracts for event aggregates, specific schedule events, the main calendar view, and event completion/voiding.
+Calendar owns the HTTP contracts for event aggregates, synchronous ICS aggregate import, specific schedule events, the main calendar view, and event completion/voiding.
 
 ```text
 Path prefix: /api/calendar
@@ -14,7 +14,7 @@ Common rules: ../API.md
 
 ## 2. Current Status
 
-`Implemented`. The `/api/calendar` routes are registered in `internal/app/routes.go`; the current implementation includes EventAggregate, Event, the main CalendarView, Event finish / void, and the aggregate deletion closed loop.
+`Implemented`. The `/api/calendar` routes are registered in `internal/app/routes.go`; the current implementation includes EventAggregate, synchronous ICS import, Event, the main CalendarView, Event finish / void, and the aggregate deletion closed loop.
 
 ## 3. Endpoint Inventory
 
@@ -23,6 +23,7 @@ Common rules: ../API.md
 | `GET` | `/api/calendar/view` | Authenticated | `Implemented` | Read the main calendar view, returning only scheduled events |
 | `GET` | `/api/calendar/aggregates` | Authenticated | `Implemented` | List event aggregates |
 | `POST` | `/api/calendar/aggregates` | Authenticated | `Implemented` | Create a nullable event aggregate |
+| `POST` | `/api/calendar/aggregates/import-ics` | Authenticated | `Implemented` | Create an event aggregate and its concrete events from an uploaded ICS file |
 | `GET` | `/api/calendar/aggregates/{ref_code}` | Authenticated | `Implemented` | Read aggregate details and all child events |
 | `DELETE` | `/api/calendar/aggregates/{ref_code}` | Authenticated | `Implemented` | Delete an entire event aggregate and its child events |
 | `POST` | `/api/calendar/aggregates/{ref_code}/events` | Authenticated | `Implemented` | Create specific events under a designated aggregate |
@@ -71,6 +72,8 @@ ends_at    RFC3339 timestamp, later than starts_at
 The server stores both timestamps. Clients do not calculate an event end from a duration.
 
 ## 5. Request Contract
+
+### 5.1 JSON Creation
 
 Create an event aggregate:
 
@@ -143,6 +146,60 @@ Each repeating instance copies the submitted end clock and calendar-day offset o
 Duplicate events are allowed; there is no uniqueness constraint on the same owner, same start time, and same title.
 ```
 
+### 5.2 ICS Aggregate Import
+
+```http
+POST /api/calendar/aggregates/import-ics
+Content-Type: multipart/form-data
+```
+
+Multipart fields:
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `title` | Yes | Non-empty after trimming; becomes the immutable EventAggregate title and ObjectRef title projection |
+| `file` | Yes | One textual iCalendar file, at most 1 MiB |
+
+No other multipart value or file fields are accepted. The uploaded source file is parsed synchronously and is not retained after import.
+
+VEVENT mapping:
+
+```text
+SUMMARY     -> Event.metadata.title; required for every effective occurrence
+DESCRIPTION -> Event.metadata.description
+LOCATION    -> Event.metadata.location
+DTSTART     -> Event.starts_at
+DTEND or DURATION -> Event.ends_at
+```
+
+An all-day `DTSTART;VALUE=DATE` without `DTEND` or `DURATION` is treated as one calendar day. A date-time event must provide `DTEND` or a positive `DURATION`. `DTEND` remains exclusive for all-day events. Imported Events have empty tags and `scheduled` status.
+
+Time and timezone rules:
+
+```text
+UTC values ending in Z are preserved as absolute timestamps.
+TZID values must resolve through the server's IANA timezone database.
+X-WR-TIMEZONE or TIMEZONE-ID supplies the default location for floating values and is projected to aggregate metadata.timezone.
+If no calendar default or TZID is supplied, floating values are interpreted as UTC.
+Custom VTIMEZONE identifiers that cannot be resolved as IANA timezone names are rejected.
+```
+
+Recurrence import rules:
+
+```text
+VEVENTs are grouped by UID. Each UID has one master VEVENT and may have RECURRENCE-ID overrides.
+The master DTSTART, one optional RRULE, RDATE values, and EXDATE values form the recurrence set.
+RRULE supports RFC frequencies and modifiers understood by the fixed recurrence dependency, including INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY, BYMONTH, BYYEARDAY, BYWEEKNO, BYHOUR, BYMINUTE, BYSECOND, BYSETPOS, and WKST.
+An RRULE must be finite: it must have exactly one of COUNT or UNTIL.
+RDATE can add date/date-time occurrences or PERIOD values with an occurrence-specific end/duration.
+EXDATE removes matching occurrences, including DTSTART.
+RECURRENCE-ID replaces one occurrence; STATUS:CANCELLED removes it.
+RECURRENCE-ID;RANGE=THISANDFUTURE applies its time shift, duration, metadata changes, or cancellation to that and later occurrences.
+Every override must match an occurrence from the recurrence set; ambiguous masters or duplicate overrides are rejected.
+```
+
+The importer expands the complete recurrence set into concrete, non-recurring Events before writing. The final upload must produce `1..512` Events; a 513th Event rejects the entire import and no truncated result is saved. This RFC recurrence expansion is independent from the JSON creation endpoint's `week` / `month` / `year` expansion semantics.
+
 List queries:
 
 ```text
@@ -201,7 +258,7 @@ Create and read aggregate responses:
 }
 ```
 
-When creating an empty aggregate, `events` returns an empty array. `POST /api/calendar/aggregates/{ref_code}/events`
+When creating an empty aggregate, `events` returns an empty array. ICS import returns the created aggregate and all imported concrete events in the same structure. `POST /api/calendar/aggregates/{ref_code}/events`
 returns the same response structure, where `aggregate` is the parent aggregate, and `events` is the list of events generated by this creation; if the client needs the full child event list, they can subsequently read the aggregate details.
 
 Main view response:
@@ -258,6 +315,8 @@ finished / voided Events do not enter the main CalendarView.
 finished / voided Events are still displayed in the EventAggregate's child event list.
 Deleting an EventAggregate is an aggregate-level deletion, allowing the cascaded deletion of its Events.
 Creating an EventAggregate, registering the ObjectRef, writing tags, and the SUCCESS audit must all be committed in the same transaction.
+Importing ICS parses, expands, and validates the complete upload before opening the business transaction.
+ICS aggregate import creates the EventAggregate, every concrete Event, all ObjectRefs/status projections, and all SUCCESS audits in one transaction.
 Creating Events under an EventAggregate, registering Event ObjectRefs, writing Event tags, and the SUCCESS audit for each Event must all be committed in the same transaction.
 finish / void Event, ObjectRef status projection updates, and the SUCCESS audit must be committed in the same transaction.
 Deleting an EventAggregate, deleting child Event/ObjectRef/tag associations, the DELETE audit for each child Event, and the aggregate DELETE audit must all be committed in the same transaction.
@@ -271,7 +330,7 @@ All endpoints require a Bearer JWT. Resource authorization is executed in the Ca
 ```text
 user:      Can only list, read, and write EventAggregates / Events they own.
 superuser: Can list, read, create Events for, finish, void, or delete existing EventAggregates / Events of any owner;
-           When creating an EventAggregate, the new aggregate always belongs to the creating actor;
+           When creating or importing an EventAggregate, the new aggregate always belongs to the creating actor;
            When creating an Event under an existing aggregate, the new Event belongs to the owner of that aggregate.
 ```
 
@@ -284,7 +343,7 @@ HTTP 404
 
 | Status | Code | Condition |
 | --- | --- | --- |
-| `400` | `invalid_request` | Invalid creation request JSON/unknown fields, query, `ref_code`, timestamps or timestamp order, recurrence kind/count, or enumerated values |
+| `400` | `invalid_request` | Invalid creation JSON/multipart/ICS, unknown fields, file size, query, `ref_code`, timestamps or timestamp order, timezone, recurrence rules/overrides, recurrence kind/count, or imported Event count |
 | `401` | `unauthorized` | Unauthenticated or missing authenticated Principal |
 | `404` | `not_found` | EventAggregate / Event does not exist, or the current actor has no access rights |
 | `409` | `conflict` | Finishing an Event that is already `finished` / `voided`, or voiding an Event that is already `voided` |

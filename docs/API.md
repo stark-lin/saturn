@@ -38,7 +38,7 @@ Cross-module orchestrations are still recorded in the orchestrating owner's API 
 | Accounting | [api/ACCOUNTING.md](api/ACCOUNTING.md) | `/api/accounting` | Ledger and immutable transaction APIs registered |
 | Notes | [api/NOTES.md](api/NOTES.md) | `/api/notes` | Logical Note CRUD and immutable version APIs registered |
 | Files | [api/FILES.md](api/FILES.md) | `/api/files` | Collection / File APIs registered |
-| Calendar | [api/CALENDAR.md](api/CALENDAR.md) | `/api/calendar` | EventAggregate / Event APIs registered |
+| Calendar | [api/CALENDAR.md](api/CALENDAR.md) | `/api/calendar` | EventAggregate / ICS import / Event APIs registered |
 | LLM | [api/LLM.md](api/LLM.md) | `/api/llm` | Session / Request / Response APIs registered |
 | Platform | [api/PLATFORM.md](api/PLATFORM.md) | `/api/auth`, `/api/events`, `/api/platform/*` | Auth, events, metadata, and superuser audit queries registered |
 

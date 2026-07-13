@@ -172,6 +172,7 @@ func TestCalendarRoutesAreRegistered(t *testing.T) {
 		{method: http.MethodGet, path: "/api/calendar/view?from=2026-06-01&to=2026-06-02"},
 		{method: http.MethodGet, path: "/api/calendar/aggregates"},
 		{method: http.MethodPost, path: "/api/calendar/aggregates"},
+		{method: http.MethodPost, path: "/api/calendar/aggregates/import-ics"},
 		{method: http.MethodGet, path: "/api/calendar/aggregates/CAL-00000001"},
 		{method: http.MethodDelete, path: "/api/calendar/aggregates/CAL-00000001"},
 		{method: http.MethodPost, path: "/api/calendar/aggregates/CAL-00000001/events"},

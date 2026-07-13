@@ -5,8 +5,10 @@ go 1.26.0
 
 require (
 	github.com/arch-go/arch-go/v2 v2.1.2
+	github.com/arran4/golang-ical v0.3.5
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/teambition/rrule-go v1.8.2
 	golang.org/x/crypto v0.49.0
 	lukechampine.com/blake3 v1.4.1
 )

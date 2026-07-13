@@ -327,6 +327,8 @@ internal/calendar
 ├── handler.go
 ├── handler_api.go
 ├── handler_test.go
+├── ics_import.go
+├── ics_import_test.go
 ├── import_export_contributor.go
 ├── model.go
 ├── module.go
@@ -347,6 +349,7 @@ EventAggregate empty creation
 Event specific schedule instance, must be created under aggregate
 Calendar view main view
 None / week / month / year recurrence expansion by count upon Event creation
+Synchronous ICS parsing and bounded RFC recurrence-set expansion into at most 512 concrete Events
 Event finish / void state transition
 ObjectRef / Tag / Audit in-transaction synchronization
 Search contributor

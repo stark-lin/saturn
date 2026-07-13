@@ -129,6 +129,7 @@ EventAggregate can be created empty.
 Event is a specific schedule instance and must be created under an EventAggregate.
 Event only saves the start and end timestamps.
 Recurrence supports `none` plus count-based `week`, `month`, and `year`, and is expanded into specific Events upon Event creation.
+An authenticated client can also create one EventAggregate from a textual ICS upload. The importer resolves bounded RFC recurrence sets, RDATE / EXDATE, and RECURRENCE-ID overrides into at most 512 concrete Events before atomically creating the aggregate.
 finished / voided Events do not enter the main Calendar view but are retained in the aggregate details.
 ```
 
@@ -139,6 +140,7 @@ Calendar
 ├── EventAggregate
 │   ├── immutable metadata
 │   ├── tags
+│   ├── synchronous ICS import
 │   └── aggregate delete
 │
 ├── Event

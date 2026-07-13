@@ -98,6 +98,15 @@ Local password hashing uses:
 golang.org/x/crypto/bcrypt
 ```
 
+Calendar's synchronous textual ICS import uses fixed-version, pure Go parsing and recurrence libraries:
+
+```text
+github.com/arran4/golang-ical v0.3.5
+github.com/teambition/rrule-go v1.8.2
+```
+
+`golang-ical` parses iCalendar components and properties. `rrule-go` expands bounded RFC recurrence rules and combines RRULE, RDATE, and EXDATE values. Calendar owns UID grouping, RECURRENCE-ID override application, the 512-Event limit, validation, authorization, ObjectRef synchronization, and auditing; neither dependency performs network calls or data persistence.
+
 ---
 
 ## 5. Runtime Configuration

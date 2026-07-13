@@ -38,6 +38,7 @@ func (a *App) registerRoutes() {
 	a.Router.Handle("GET /api/calendar/view", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.CalendarView)))
 	a.Router.Handle("GET /api/calendar/aggregates", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.ListEventAggregates)))
 	a.Router.Handle("POST /api/calendar/aggregates", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.CreateEventAggregate)))
+	a.Router.Handle("POST /api/calendar/aggregates/import-ics", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.ImportEventAggregate)))
 	a.Router.Handle("GET /api/calendar/aggregates/{ref_code}", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.GetEventAggregate)))
 	a.Router.Handle("DELETE /api/calendar/aggregates/{ref_code}", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.DeleteEventAggregate)))
 	a.Router.Handle("POST /api/calendar/aggregates/{ref_code}/events", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.CalendarHTTP.CreateEvent)))

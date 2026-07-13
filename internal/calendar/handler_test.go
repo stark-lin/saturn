@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +40,39 @@ func TestHandlerCreatesEmptyEventAggregate(t *testing.T) {
 	}
 	if len(body.Events) != 0 {
 		t.Fatalf("event response = %#v", body.Events)
+	}
+}
+
+func TestHandlerImportsEventAggregateFromMultipartICS(t *testing.T) {
+	service := &fakeEventService{detail: EventAggregateDetail{
+		Aggregate: EventAggregate{RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Imported"}},
+		Events:    []Event{{RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", Metadata: EventMetadata{Title: "Planning"}}},
+	}}
+	handler := NewHandler(service)
+	icsBody := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
+	request := authenticatedICSMultipartRequest(t, "Imported", icsBody)
+	response := httptest.NewRecorder()
+
+	handler.ImportEventAggregate(response, request)
+
+	if response.Code != http.StatusCreated || response.Header().Get("Location") != "/api/calendar/aggregates/CAL-00000001" {
+		t.Fatalf("import response = %d location %q", response.Code, response.Header().Get("Location"))
+	}
+	if service.importTitle != "Imported" || service.importBody != icsBody {
+		t.Fatalf("import input = title %q body %q", service.importTitle, service.importBody)
+	}
+}
+
+func TestHandlerRejectsInvalidICSImportMultipart(t *testing.T) {
+	handler := NewHandler(&fakeEventService{})
+	request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/import-ics", "not multipart")
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+
+	handler.ImportEventAggregate(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid import status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 }
 
@@ -272,6 +307,8 @@ type fakeEventService struct {
 	event                   Event
 	view                    CalendarView
 	createInput             CreateEventAggregateInput
+	importTitle             string
+	importBody              string
 	createEventAggregateRef string
 	createEventInput        CreateEventInput
 	listQuery               EventAggregateQuery
@@ -288,6 +325,16 @@ func (s *fakeEventService) ListEventAggregates(_ context.Context, _ auth.Princip
 
 func (s *fakeEventService) CreateEventAggregate(_ context.Context, _ auth.Principal, input CreateEventAggregateInput) (EventAggregateDetail, error) {
 	s.createInput = input
+	return s.detail, s.err
+}
+
+func (s *fakeEventService) ImportEventAggregate(_ context.Context, _ auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error) {
+	s.importTitle = input.Title
+	body, err := io.ReadAll(input.Body)
+	if err != nil {
+		return EventAggregateDetail{}, err
+	}
+	s.importBody = string(body)
 	return s.detail, s.err
 }
 
@@ -326,5 +373,27 @@ func (s *fakeEventService) VoidEvent(_ context.Context, _ auth.Principal, _ stri
 
 func authenticatedCalendarRequest(method string, target string, body string) *http.Request {
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+}
+
+func authenticatedICSMultipartRequest(t *testing.T, title string, body string) *http.Request {
+	t.Helper()
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	if err := writer.WriteField("title", title); err != nil {
+		t.Fatalf("write title: %v", err)
+	}
+	filePart, err := writer.CreateFormFile("file", "calendar.ics")
+	if err != nil {
+		t.Fatalf("create ICS file part: %v", err)
+	}
+	if _, err := io.WriteString(filePart, body); err != nil {
+		t.Fatalf("write ICS body: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/calendar/aggregates/import-ics", &requestBody)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
 }

@@ -61,14 +61,55 @@ func (s *Service) ListEventAggregates(ctx context.Context, actor auth.Principal,
 }
 
 func (s *Service) CreateEventAggregate(ctx context.Context, actor auth.Principal, input CreateEventAggregateInput) (EventAggregateDetail, error) {
+	return s.createEventAggregateWithEvents(ctx, actor, input, nil)
+}
+
+func (s *Service) ImportEventAggregate(ctx context.Context, actor auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error) {
+	parsed, err := parseICSImport(input)
+	if err != nil {
+		return EventAggregateDetail{}, wrapInvalidICSImport(err)
+	}
+	return s.createEventAggregateWithEvents(ctx, actor, CreateEventAggregateInput{
+		Metadata: EventAggregateMetadata{
+			Title:    input.Title,
+			Timezone: parsed.Timezone,
+		},
+	}, parsed.Events)
+}
+
+func (s *Service) createEventAggregateWithEvents(
+	ctx context.Context,
+	actor auth.Principal,
+	input CreateEventAggregateInput,
+	eventInputs []CreateEventInput,
+) (EventAggregateDetail, error) {
 	input, err := normalizeCreateEventAggregateInput(input)
 	if err != nil {
 		return EventAggregateDetail{}, err
+	}
+	if len(eventInputs) > maxICSImportedEvents {
+		return EventAggregateDetail{}, ErrInvalidICSImport
+	}
+	normalizedEvents := make([]CreateEventInput, 0, len(eventInputs))
+	for _, eventInput := range eventInputs {
+		normalized, err := normalizeCreateEventInput(eventInput)
+		if err != nil || normalized.Recurrence.Kind != RecurrenceKindNone {
+			return EventAggregateDetail{}, ErrInvalidICSImport
+		}
+		normalizedEvents = append(normalizedEvents, normalized)
 	}
 
 	aggregateRefCode, err := s.references.ClaimCode(ctx, ref.ObjectTypeEventAggregate)
 	if err != nil {
 		return EventAggregateDetail{}, err
+	}
+	eventRefCodes := make([]string, 0, len(normalizedEvents))
+	for range normalizedEvents {
+		eventRefCode, err := s.references.ClaimCode(ctx, ref.ObjectTypeEvent)
+		if err != nil {
+			return EventAggregateDetail{}, err
+		}
+		eventRefCodes = append(eventRefCodes, eventRefCode)
 	}
 
 	var created EventAggregateDetail
@@ -89,13 +130,38 @@ func (s *Service) CreateEventAggregate(ctx context.Context, actor auth.Principal
 		aggregate.RefCode = aggregateRef.RefCode
 		aggregate.Tags = input.Tags
 		created.Aggregate = aggregate
-		created.Events = []Event{}
+		created.Events = make([]Event, 0, len(normalizedEvents))
 
 		if _, err := s.audit.Record(txCtx, audit.Event{
 			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
 			TargetRefCode: aggregate.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
+		}
+		for index, eventInput := range normalizedEvents {
+			event, err := s.repo.CreateEvent(txCtx, actor.ID, aggregate.ID, eventInput)
+			if err != nil {
+				return err
+			}
+			eventRef, err := s.references.Register(txCtx, ref.Registration{
+				OwnerID: actor.ID, RefCode: eventRefCodes[index], ObjectType: ref.ObjectTypeEvent,
+				ObjectID: event.ID, Title: eventProjectionTitle(event), Tags: eventInput.Tags, Status: string(EventStatusScheduled),
+			})
+			if err != nil {
+				return err
+			}
+			event.ObjectRefID = eventRef.ID
+			event.RefCode = eventRef.RefCode
+			event.AggregateRefCode = aggregate.RefCode
+			event.Status = EventStatusScheduled
+			event.Tags = eventInput.Tags
+			if _, err := s.audit.Record(txCtx, audit.Event{
+				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+				TargetRefCode: event.RefCode, Result: audit.ResultSuccess,
+			}); err != nil {
+				return err
+			}
+			created.Events = append(created.Events, event)
 		}
 		return nil
 	})

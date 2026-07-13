@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,52 @@ func TestServiceCreatesEmptyEventAggregateWithRefsAndTags(t *testing.T) {
 		t.Fatalf("registration tags = %#v", references.registrations)
 	}
 	if len(audits.successes) != 1 || audits.successes[0].TargetRefCode != detail.Aggregate.RefCode {
+		t.Fatalf("audit successes = %#v", audits.successes)
+	}
+}
+
+func TestServiceImportsICSAsOneTransactionalAggregateCreation(t *testing.T) {
+	repo := &fakeRepository{aggregates: make(map[int64]EventAggregate), events: make(map[int64]Event)}
+	references := &fakeReferences{}
+	audits := &fakeAudits{}
+	transactions := &fakeTransactionRunner{}
+	service := NewService(repo, transactions, references, audits)
+	input := `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Saturn Test//EN
+X-WR-TIMEZONE:Australia/Sydney
+BEGIN:VEVENT
+UID:imported
+DTSTAMP:20260701T000000Z
+DTSTART;TZID=Australia/Sydney:20260706T090000
+DTEND;TZID=Australia/Sydney:20260706T100000
+RRULE:FREQ=DAILY;COUNT=2
+SUMMARY:Imported event
+END:VEVENT
+END:VCALENDAR
+`
+
+	detail, err := service.ImportEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, ImportEventAggregateInput{
+		Title: "Imported calendar",
+		Body:  strings.NewReader(input),
+	})
+	if err != nil {
+		t.Fatalf("import ICS: %v", err)
+	}
+	if transactions.calls != 1 {
+		t.Fatalf("transaction calls = %d, want 1", transactions.calls)
+	}
+	if detail.Aggregate.Metadata.Title != "Imported calendar" || detail.Aggregate.Metadata.Timezone != "Australia/Sydney" {
+		t.Fatalf("aggregate = %#v", detail.Aggregate)
+	}
+	if len(detail.Events) != 2 || len(repo.events) != 2 {
+		t.Fatalf("imported events = %#v repo = %#v", detail.Events, repo.events)
+	}
+	if len(references.registrations) != 3 || references.registrations[0].ObjectType != ref.ObjectTypeEventAggregate ||
+		references.registrations[1].ObjectType != ref.ObjectTypeEvent {
+		t.Fatalf("reference registrations = %#v", references.registrations)
+	}
+	if len(audits.successes) != 3 || audits.successes[0].TargetRefCode != detail.Aggregate.RefCode {
 		t.Fatalf("audit successes = %#v", audits.successes)
 	}
 }
@@ -504,6 +551,15 @@ type fakeRepository struct {
 	nextID     int64
 	aggregates map[int64]EventAggregate
 	events     map[int64]Event
+}
+
+type fakeTransactionRunner struct {
+	calls int
+}
+
+func (r *fakeTransactionRunner) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	r.calls++
+	return fn(ctx)
 }
 
 func (r *fakeRepository) storeAggregate(aggregate EventAggregate) {
