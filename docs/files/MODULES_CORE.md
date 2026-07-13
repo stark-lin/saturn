@@ -346,7 +346,7 @@ EventAggregate root
 EventAggregate empty creation
 Event specific schedule instance, must be created under aggregate
 Calendar view main view
-None / week recurrence expansion by count upon Event creation
+None / week / month / year recurrence expansion by count upon Event creation
 Event finish / void state transition
 ObjectRef / Tag / Audit in-transaction synchronization
 Search contributor

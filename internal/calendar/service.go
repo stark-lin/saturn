@@ -369,7 +369,7 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 			return CreateEventInput{}, ErrInvalidEvent
 		}
 		input.Recurrence.Count = 1
-	case RecurrenceKindWeek:
+	case RecurrenceKindWeek, RecurrenceKindMonth, RecurrenceKindYear:
 		if input.Recurrence.Count < 1 || input.Recurrence.Count > maxRecurrenceCount {
 			return CreateEventInput{}, ErrInvalidEvent
 		}
@@ -383,10 +383,10 @@ func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 	switch input.Recurrence.Kind {
 	case RecurrenceKindNone:
 		return []CreateEventInput{eventInputAt(input, input.StartsAt)}, nil
-	case RecurrenceKindWeek:
+	case RecurrenceKindWeek, RecurrenceKindMonth, RecurrenceKindYear:
 		events := make([]CreateEventInput, 0, input.Recurrence.Count)
 		for occurrence := 0; occurrence < input.Recurrence.Count; occurrence++ {
-			startsAt := input.StartsAt.AddDate(0, 0, occurrence*7)
+			startsAt := recurringEventStartsAt(input.StartsAt, input.Recurrence.Kind, occurrence)
 			eventInput := eventInputAt(input, startsAt)
 			if !eventInput.EndsAt.After(eventInput.StartsAt) {
 				return nil, ErrInvalidEvent
@@ -397,6 +397,35 @@ func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 	default:
 		return nil, ErrInvalidEvent
 	}
+}
+
+func recurringEventStartsAt(startsAt time.Time, kind RecurrenceKind, occurrence int) time.Time {
+	switch kind {
+	case RecurrenceKindWeek:
+		return startsAt.AddDate(0, 0, occurrence*7)
+	case RecurrenceKindMonth:
+		return clampedCalendarDate(startsAt, 0, occurrence)
+	case RecurrenceKindYear:
+		return clampedCalendarDate(startsAt, occurrence, 0)
+	default:
+		return startsAt
+	}
+}
+
+func clampedCalendarDate(template time.Time, yearOffset int, monthOffset int) time.Time {
+	targetMonth := time.Date(
+		template.Year()+yearOffset, template.Month()+time.Month(monthOffset), 1,
+		template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location(),
+	)
+	lastDay := time.Date(targetMonth.Year(), targetMonth.Month()+1, 0, 0, 0, 0, 0, targetMonth.Location()).Day()
+	day := template.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(
+		targetMonth.Year(), targetMonth.Month(), day,
+		template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location(),
+	)
 }
 
 func eventInputAt(input CreateEventInput, startsAt time.Time) CreateEventInput {

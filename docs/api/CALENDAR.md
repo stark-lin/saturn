@@ -129,15 +129,17 @@ Event creation field rules:
 | `tags` | No | Trimmed, empty values removed, and deduplicated before associating with each generated Event |
 | `starts_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time |
 | `ends_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time; must be later than `starts_at` |
-| `recurrence.kind` | No | `none` or `week`; defaults to `none` |
-| `recurrence.count` | Week only | Total number of generated Events including the first Event; integer range `1..520`; for `none`, omit it or use `1` |
+| `recurrence.kind` | No | `none`, `week`, `month`, or `year`; defaults to `none` |
+| `recurrence.count` | Repeating kinds only | Total number of generated Events including the first Event; integer range `1..520`; for `none`, omit it or use `1` |
 
 Recurrence rules:
 
 ```text
 none: Generates exactly 1 Event starting at starts_at.
 week: Generates recurrence.count Events on the same weekday and clock time as starts_at, with each Event starting 7 days after the previous one. Count includes the first Event.
-Each week instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
+month: Generates recurrence.count Events on the same calendar day and clock time in successive months. If the template day does not exist in a target month, that instance uses the target month's last day; each occurrence is calculated from the original template, so January 31 produces January 31, February 28/29, and March 31.
+year: Generates recurrence.count Events on the same calendar date and clock time in successive years. February 29 uses February 28 in non-leap years and returns to February 29 in later leap years.
+Each repeating instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
 Duplicate events are allowed; there is no uniqueness constraint on the same owner, same start time, and same title.
 ```
 

@@ -501,7 +501,7 @@ Content:
 * EventAggregate
 * Event
 * Main Calendar view
-* None / week recurrence expansion by count upon Event creation
+* None / week / month / year recurrence expansion by count upon Event creation
 
 First version strategy:
 

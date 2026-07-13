@@ -175,6 +175,82 @@ func TestServiceExpandsWeekRecurrenceWithTemplateEndClockAndDayOffset(t *testing
 	}
 }
 
+func TestServiceExpandsMonthRecurrenceWithClampedMonthEnd(t *testing.T) {
+	service, repo, _, _ := newTestService()
+	startsAt := time.Date(2026, time.January, 31, 9, 0, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.January, 31, 10, 0, 0, 0, time.UTC)
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+		Metadata: EventAggregateMetadata{Title: "Month end"},
+	})
+	if err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+	repo.storeAggregate(aggregate.Aggregate)
+
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+		Metadata: EventMetadata{Title: "Month end review"},
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
+		Recurrence: RecurrenceInput{
+			Kind:  RecurrenceKindMonth,
+			Count: 3,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create month recurrence: %v", err)
+	}
+	wantDates := []string{"2026-01-31", "2026-02-28", "2026-03-31"}
+	if len(detail.Events) != len(wantDates) {
+		t.Fatalf("month recurrence event count = %d, want %d", len(detail.Events), len(wantDates))
+	}
+	for index, event := range detail.Events {
+		if got := event.StartsAt.Format(time.DateOnly); got != wantDates[index] {
+			t.Fatalf("event %d starts_at date = %s, want %s", index, got, wantDates[index])
+		}
+		if event.EndsAt.Format(time.DateOnly) != wantDates[index] || event.EndsAt.Hour() != 10 {
+			t.Fatalf("event %d ends_at = %s, want %s at 10:00", index, event.EndsAt, wantDates[index])
+		}
+	}
+}
+
+func TestServiceExpandsYearRecurrenceWithClampedLeapDay(t *testing.T) {
+	service, repo, _, _ := newTestService()
+	startsAt := time.Date(2024, time.February, 29, 9, 0, 0, 0, time.UTC)
+	endsAt := time.Date(2024, time.February, 29, 10, 0, 0, 0, time.UTC)
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+		Metadata: EventAggregateMetadata{Title: "Leap day"},
+	})
+	if err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+	repo.storeAggregate(aggregate.Aggregate)
+
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+		Metadata: EventMetadata{Title: "Leap day review"},
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
+		Recurrence: RecurrenceInput{
+			Kind:  RecurrenceKindYear,
+			Count: 5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create year recurrence: %v", err)
+	}
+	wantDates := []string{"2024-02-29", "2025-02-28", "2026-02-28", "2027-02-28", "2028-02-29"}
+	if len(detail.Events) != len(wantDates) {
+		t.Fatalf("year recurrence event count = %d, want %d", len(detail.Events), len(wantDates))
+	}
+	for index, event := range detail.Events {
+		if got := event.StartsAt.Format(time.DateOnly); got != wantDates[index] {
+			t.Fatalf("event %d starts_at date = %s, want %s", index, got, wantDates[index])
+		}
+		if event.EndsAt.Format(time.DateOnly) != wantDates[index] || event.EndsAt.Hour() != 10 {
+			t.Fatalf("event %d ends_at = %s, want %s at 10:00", index, event.EndsAt, wantDates[index])
+		}
+	}
+}
+
 func TestServiceRejectsEventEndAtOrBeforeStart(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -360,6 +436,8 @@ func TestServiceRejectsInvalidRecurrenceBeforeWriting(t *testing.T) {
 		{name: "legacy weekly kind", recurrence: RecurrenceInput{Kind: "weekly", Count: 2}},
 		{name: "week count missing", recurrence: RecurrenceInput{Kind: RecurrenceKindWeek}},
 		{name: "week count too large", recurrence: RecurrenceInput{Kind: RecurrenceKindWeek, Count: maxRecurrenceCount + 1}},
+		{name: "month count missing", recurrence: RecurrenceInput{Kind: RecurrenceKindMonth}},
+		{name: "year count too large", recurrence: RecurrenceInput{Kind: RecurrenceKindYear, Count: maxRecurrenceCount + 1}},
 		{name: "none count negative", recurrence: RecurrenceInput{Kind: RecurrenceKindNone, Count: -1}},
 		{name: "none count greater than one", recurrence: RecurrenceInput{Kind: RecurrenceKindNone, Count: 2}},
 	}

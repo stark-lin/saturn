@@ -485,7 +485,7 @@ export function renderCalendarPage(target) {
     renderSelect({
       label: "Recurrence",
       name: "recurrence_kind",
-      options: [["none", "None"], ["week", "Week"]],
+      options: [["none", "None"], ["week", "Week"], ["month", "Month"], ["year", "Year"]],
       value: "none",
     }),
     renderField({ label: "Recurrence Count", name: "recurrence_count", type: "number", value: "1", min: 1 }),
@@ -878,8 +878,8 @@ export function renderCalendarPage(target) {
   }
 
   function updateEventRecurrenceFields() {
-    const isWeek = eventForm.elements.recurrence_kind.value === "week";
-    eventForm.elements.recurrence_count.disabled = !isWeek;
+    const repeats = eventForm.elements.recurrence_kind.value !== "none";
+    eventForm.elements.recurrence_count.disabled = !repeats;
   }
 
   async function createAggregate(event) {
@@ -925,10 +925,10 @@ export function renderCalendarPage(target) {
 
     const recurrenceKind = eventForm.elements.recurrence_kind.value;
     const recurrence = { kind: recurrenceKind };
-    if (recurrenceKind === "week") {
+    if (recurrenceKind !== "none") {
       const recurrenceCount = Number(eventForm.elements.recurrence_count.value);
       if (!Number.isInteger(recurrenceCount) || recurrenceCount < 1) {
-        setNotice("Unable to Create Event", "Week recurrence needs a positive count.", "warning");
+        setNotice("Unable to Create Event", "Recurrence needs a positive count.", "warning");
         return;
       }
       recurrence.count = recurrenceCount;

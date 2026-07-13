@@ -128,7 +128,7 @@ EventAggregate is the aggregate root.
 EventAggregate can be created empty.
 Event is a specific schedule instance and must be created under an EventAggregate.
 Event only saves the start and end timestamps.
-Recurrence supports `none` and count-based `week`, and is expanded into specific Events upon Event creation.
+Recurrence supports `none` plus count-based `week`, `month`, and `year`, and is expanded into specific Events upon Event creation.
 finished / voided Events do not enter the main Calendar view but are retained in the aggregate details.
 ```
 

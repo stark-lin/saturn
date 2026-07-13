@@ -16,8 +16,10 @@ const (
 type RecurrenceKind string
 
 const (
-	RecurrenceKindNone RecurrenceKind = "none"
-	RecurrenceKindWeek RecurrenceKind = "week"
+	RecurrenceKindNone  RecurrenceKind = "none"
+	RecurrenceKindWeek  RecurrenceKind = "week"
+	RecurrenceKindMonth RecurrenceKind = "month"
+	RecurrenceKindYear  RecurrenceKind = "year"
 )
 
 type EventAggregateMetadata struct {
