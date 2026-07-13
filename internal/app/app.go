@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/stark-lin/saturn/internal/accounting"
 	"github.com/stark-lin/saturn/internal/calendar"
 	"github.com/stark-lin/saturn/internal/files"
@@ -40,7 +42,7 @@ type App struct {
 	NotesHTTP      *notes.Handler
 	LLMWorker      *llm.Worker
 	SearchHTTP     *search.Handler
-	Router         *http.ServeMux
+	Router         *gin.Engine
 	Server         *http.Server
 	StartedAt      time.Time
 }
@@ -51,7 +53,7 @@ type Logger interface {
 }
 
 func New(_ context.Context, deps Dependencies) (*App, error) {
-	router := http.NewServeMux()
+	router := newHTTPRouter()
 	transactionRunner := platformdb.SQLTransactionRunner{DB: deps.Database.DB}
 	notesModule := notes.NewModule(
 		notes.NewSQLRepository(deps.Database.DB),

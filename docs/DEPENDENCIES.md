@@ -53,14 +53,22 @@ The initial code inventory fixes the first implementation stack as:
 
 ```text
 Go module: github.com/stark-lin/saturn
-Backend: Go net/http and standard library first
+Backend: Go net/http handlers with Gin HTTP routing
 Frontend: plain native HTML first
 Frontend HTTP: browser forms or minimal vanilla JavaScript fetch when required
 Frontend streaming: authenticated SSE uses minimal vanilla JavaScript fetch streaming
 Frontend build: no React / Vite / Node build step in the initial pass
 ```
 
-This stack can be revisited by a later architecture decision if the frontend or backend requirements outgrow the initial pure-HTTP/static setup.
+This stack can be revisited by a later architecture decision if the frontend or backend requirements outgrow the current HTTP/static setup.
+
+HTTP route matching, path grouping, and route-level middleware composition use:
+
+```text
+github.com/gin-gonic/gin v1.12.0
+```
+
+Gin is limited to the `internal/app` routing boundary. Business and platform handlers retain the standard `net/http` contract; the app adapter maps Gin path parameters into `http.Request.PathValue`, and the existing structured request logging, request ID, recovery, authentication service, static file serving, and SSE handlers remain authoritative.
 
 Backend PostgreSQL access uses Go `database/sql` with:
 

@@ -19,7 +19,7 @@ internal/app
 | --- | --- |
 | `app.go` | Defines the `App` struct, HTTP router holder, and startup entry |
 | `deps.go` | Initializes config, DB, Redis, local FS storage, platform services, and business module dependencies |
-| `routes.go` | Centrally registers APIs, frontend resource entries, platform capabilities, SSE, and health check routes |
+| `routes.go` | Builds the Gin router, centrally registers grouped APIs, adapts standard `net/http` handlers, and registers frontend resources, platform capabilities, SSE, and health checks |
 | `middleware.go` | Assembles common middleware such as authentication, logging, recover, request id, etc. |
 | `lifecycle.go` | Manages server start/stop, LLM worker / scheduler start/stop, and graceful shutdown |
 
@@ -31,7 +31,7 @@ Allowed:
 Depend on all business modules
 Depend on internal/platform
 Responsible for dependency injection
-Responsible for route registration
+Responsible for Gin route registration and standard net/http handler adaptation
 ```
 
 Prohibited:

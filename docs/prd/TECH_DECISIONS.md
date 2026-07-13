@@ -9,9 +9,12 @@
 ```text
 Go
 Modular Monolith
+Gin router at the application wiring boundary
 ```
 
 The system adopts a Go modular monolith architecture.
+
+Gin owns route matching, path-prefix grouping, and route-level middleware composition in `internal/app`. Business and platform handlers continue to use standard `net/http` interfaces so the router choice does not enter service or repository boundaries. Existing request logging, request ID, recovery, authentication behavior, static file serving, and SSE transport are retained.
 
 This architecture is geared towards single-instance, single-machine deployment, and personal self-hosting scenarios, not targeting microservices, multi-tenant SaaS, or distributed clusters as the default direction.
 
