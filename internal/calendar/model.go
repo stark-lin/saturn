@@ -63,7 +63,7 @@ type Event struct {
 	ObjectRefID      int64
 	RefCode          string
 	StartsAt         time.Time
-	DurationMinutes  int
+	EndsAt           time.Time
 	Metadata         EventMetadata
 	Status           EventStatus
 	Tags             []string
@@ -97,9 +97,9 @@ type CreateEventAggregateInput struct {
 }
 
 type CreateEventInput struct {
-	Metadata        EventMetadata
-	Tags            []string
-	StartsAt        time.Time
-	DurationMinutes int
-	Recurrence      RecurrenceInput
+	Metadata   EventMetadata
+	Tags       []string
+	StartsAt   time.Time
+	EndsAt     time.Time
+	Recurrence RecurrenceInput
 }

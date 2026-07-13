@@ -269,7 +269,8 @@ migrations
 ├── 000012_calendar_finished_status.sql
 ├── 000013_llm_psql_queue.sql
 ├── 000014_object_ref_search_indexes.sql
-└── 000015_notes_version_objects.sql
+├── 000015_notes_version_objects.sql
+└── 000016_calendar_ends_at.sql
 ```
 
 Rules:

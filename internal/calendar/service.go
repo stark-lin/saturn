@@ -365,7 +365,7 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 	}
 	input.Recurrence.Weekdays = weekdays
 
-	if input.Metadata.Title == "" || input.StartsAt.IsZero() || input.DurationMinutes < 1 {
+	if input.Metadata.Title == "" || input.StartsAt.IsZero() || input.EndsAt.IsZero() || !input.EndsAt.After(input.StartsAt) {
 		return CreateEventInput{}, ErrInvalidEvent
 	}
 	switch input.Recurrence.Kind {
@@ -395,7 +395,11 @@ func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 				if startsAt.Before(input.StartsAt) {
 					continue
 				}
-				events = append(events, eventInputAt(input, startsAt))
+				eventInput := eventInputAt(input, startsAt)
+				if !eventInput.EndsAt.After(eventInput.StartsAt) {
+					return nil, ErrInvalidEvent
+				}
+				events = append(events, eventInput)
 			}
 		}
 		if len(events) == 0 {
@@ -410,8 +414,28 @@ func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 func eventInputAt(input CreateEventInput, startsAt time.Time) CreateEventInput {
 	return CreateEventInput{
 		Metadata: input.Metadata, Tags: input.Tags,
-		StartsAt: startsAt, DurationMinutes: input.DurationMinutes,
+		StartsAt: startsAt, EndsAt: recurringEventEndsAt(input, startsAt),
 	}
+}
+
+func recurringEventEndsAt(input CreateEventInput, startsAt time.Time) time.Time {
+	if startsAt.Equal(input.StartsAt) {
+		return input.EndsAt
+	}
+	templateEndsAt := input.EndsAt.In(input.StartsAt.Location())
+	dayOffset := calendarDayOffset(input.StartsAt, templateEndsAt)
+	endDate := startsAt.AddDate(0, 0, dayOffset)
+	return time.Date(
+		endDate.Year(), endDate.Month(), endDate.Day(),
+		templateEndsAt.Hour(), templateEndsAt.Minute(), templateEndsAt.Second(), templateEndsAt.Nanosecond(),
+		startsAt.Location(),
+	)
+}
+
+func calendarDayOffset(startsAt time.Time, endsAt time.Time) int {
+	startDate := time.Date(startsAt.Year(), startsAt.Month(), startsAt.Day(), 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(endsAt.Year(), endsAt.Month(), endsAt.Day(), 0, 0, 0, 0, time.UTC)
+	return int(endDate.Sub(startDate) / (24 * time.Hour))
 }
 
 func startOfWeek(t time.Time) time.Time {

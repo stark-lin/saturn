@@ -126,15 +126,16 @@ function formatEventDate(event) {
 }
 
 function eventEnd(event) {
-  return new Date(new Date(event.starts_at).getTime() + Number(event.duration_minutes ?? 0) * 60 * 1000);
+  return new Date(event.ends_at);
 }
 
 function eventTimeRange(event) {
   const start = new Date(event.starts_at);
-  if (Number.isNaN(start.getTime())) {
+  const end = eventEnd(event);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return "--";
   }
-  return `${formatLocalTime(start)}-${formatLocalTime(eventEnd(event))}`;
+  return `${formatLocalTime(start)}-${formatLocalTime(end)}`;
 }
 
 function combineLocalDateTime(dateValue, timeValue) {
@@ -497,9 +498,13 @@ export function renderCalendarPage(target) {
     renderField({ label: "Starts Date", name: "starts_date", type: "date", value: state.selectedDate, required: true }),
     renderField({ label: "Starts Time", name: "starts_time", type: "time", value: "09:00", required: true }),
   );
-  const durationRecurrenceFields = el("div", "control-split");
-  durationRecurrenceFields.append(
-    renderField({ label: "Duration Minutes", name: "duration_minutes", type: "number", value: "60", required: true, min: 1 }),
+  const endFields = el("div", "control-split");
+  endFields.append(
+    renderField({ label: "Ends Date", name: "ends_date", type: "date", value: state.selectedDate, required: true }),
+    renderField({ label: "Ends Time", name: "ends_time", type: "time", value: "10:00", required: true }),
+  );
+  const recurrenceKindFields = el("div", "control-split");
+  recurrenceKindFields.append(
     renderSelect({
       label: "Recurrence",
       name: "recurrence_kind",
@@ -517,7 +522,8 @@ export function renderCalendarPage(target) {
   eventFields.append(
     eventBasics,
     scheduleFields,
-    durationRecurrenceFields,
+    endFields,
+    recurrenceKindFields,
     recurrenceFields,
     eventTags,
     eventDescription,
@@ -543,7 +549,7 @@ export function renderCalendarPage(target) {
   const eventDetailValues = {
     aggregate: renderReadonlyDetail("Aggregate"),
     startsAt: renderReadonlyDetail("Starts At"),
-    duration: renderReadonlyDetail("Duration"),
+    endsAt: renderReadonlyDetail("Ends At"),
     status: renderReadonlyDetail("Status"),
     location: renderReadonlyDetail("Location", "accounting-readonly--wide"),
     tags: renderReadonlyDetail("Tags", "accounting-readonly--wide"),
@@ -770,7 +776,7 @@ export function renderCalendarPage(target) {
     ));
     eventDetailValues.aggregate.value.textContent = `${aggregate?.metadata?.title ?? "Aggregate"} / ${event.aggregate_ref_code}`;
     eventDetailValues.startsAt.value.textContent = formatLocalDateTime(event.starts_at);
-    eventDetailValues.duration.value.textContent = `${event.duration_minutes} minutes`;
+    eventDetailValues.endsAt.value.textContent = formatLocalDateTime(event.ends_at);
     eventDetailValues.status.value.textContent = titleCase(event.status);
     eventDetailValues.location.value.textContent = event.metadata?.location || aggregate?.metadata?.location || "--";
     eventDetailValues.tags.value.replaceChildren(renderTagCollection(event.tags));
@@ -890,7 +896,8 @@ export function renderCalendarPage(target) {
     eventForm.reset();
     eventForm.elements.starts_date.value = state.selectedDate;
     eventForm.elements.starts_time.value = "09:00";
-    eventForm.elements.duration_minutes.value = "60";
+    eventForm.elements.ends_date.value = state.selectedDate;
+    eventForm.elements.ends_time.value = "10:00";
     eventForm.elements.recurrence_kind.value = "single";
     eventForm.elements.week_count.value = "1";
     const defaultWeekday = weekdayForDate(state.selectedDate);
@@ -944,10 +951,10 @@ export function renderCalendarPage(target) {
       setNotice("Unable to Create Event", "Open an aggregate before adding events.", "warning");
       return;
     }
-    const durationMinutes = Number(eventForm.elements.duration_minutes.value);
     const startsAt = combineLocalDateTime(eventForm.elements.starts_date.value, eventForm.elements.starts_time.value);
-    if (!startsAt || !Number.isInteger(durationMinutes) || durationMinutes < 1) {
-      setNotice("Unable to Create Event", "Provide a valid start date, time and positive duration.", "warning");
+    const endsAt = combineLocalDateTime(eventForm.elements.ends_date.value, eventForm.elements.ends_time.value);
+    if (!startsAt || !endsAt || new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+      setNotice("Unable to Create Event", "Provide valid start and end times, with the end after the start.", "warning");
       return;
     }
 
@@ -976,7 +983,7 @@ export function renderCalendarPage(target) {
         },
         tags: splitTags(eventForm.elements.event_tags.value),
         starts_at: startsAt,
-        duration_minutes: durationMinutes,
+        ends_at: endsAt,
         recurrence,
       });
       const firstEvent = result.events?.[0];

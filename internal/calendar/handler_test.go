@@ -41,21 +41,22 @@ func TestHandlerCreatesEmptyEventAggregate(t *testing.T) {
 	}
 }
 
-func TestHandlerCreatesEventUnderAggregateWithDurationAndTags(t *testing.T) {
+func TestHandlerCreatesEventUnderAggregateWithEndTimeAndTags(t *testing.T) {
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 	service := &fakeEventService{detail: EventAggregateDetail{
 		Aggregate: EventAggregate{
 			RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Sprint"}, Tags: []string{"work"},
 		},
 		Events: []Event{{
 			RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-			DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+			EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			Tags: []string{"meeting"},
 		}},
 	}}
 	handler := NewHandler(service)
 	request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/CAL-00000001/events",
-		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"single"}}`)
+		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"single"}}`)
 	request.SetPathValue("ref_code", "CAL-00000001")
 	response := httptest.NewRecorder()
 
@@ -64,16 +65,50 @@ func TestHandlerCreatesEventUnderAggregateWithDurationAndTags(t *testing.T) {
 	if response.Code != http.StatusCreated || response.Header().Get("Location") != "/api/calendar/aggregates/CAL-00000001" {
 		t.Fatalf("create response = %d location %q", response.Code, response.Header().Get("Location"))
 	}
-	if service.createEventAggregateRef != "CAL-00000001" || service.createEventInput.DurationMinutes != 45 ||
+	if service.createEventAggregateRef != "CAL-00000001" || !service.createEventInput.EndsAt.Equal(endsAt) ||
 		len(service.createEventInput.Tags) != 1 || service.createEventInput.Tags[0] != "meeting" {
 		t.Fatalf("create event input = %q %#v", service.createEventAggregateRef, service.createEventInput)
 	}
+	responseBody := response.Body.Bytes()
+	if !bytes.Contains(responseBody, []byte(`"ends_at"`)) || bytes.Contains(responseBody, []byte(`"duration_minutes"`)) {
+		t.Fatalf("event response JSON = %s", responseBody)
+	}
 	var body EventAggregateResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(responseBody, &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Events) != 1 || body.Events[0].DurationMinutes != 45 || body.Events[0].Tags[0] != "meeting" {
+	if len(body.Events) != 1 || !body.Events[0].EndsAt.Equal(endsAt) || body.Events[0].Tags[0] != "meeting" {
 		t.Fatalf("event response = %#v", body.Events)
+	}
+}
+
+func TestHandlerRejectsMissingEndTimeAndLegacyDuration(t *testing.T) {
+	handler := NewHandler(&fakeEventService{})
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing end time",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","recurrence":{"kind":"single"}}`,
+		},
+		{
+			name: "legacy duration field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"single"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/CAL-00000001/events", tt.body)
+			request.SetPathValue("ref_code", "CAL-00000001")
+			response := httptest.NewRecorder()
+
+			handler.CreateEvent(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("create response = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+		})
 	}
 }
 
@@ -120,6 +155,7 @@ func TestHandlerFinishesEvent(t *testing.T) {
 
 func TestHandlerListsGetsDeletesAndViewsCalendarResources(t *testing.T) {
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 	service := &fakeEventService{
 		detail: EventAggregateDetail{
 			Aggregate: EventAggregate{
@@ -127,18 +163,18 @@ func TestHandlerListsGetsDeletesAndViewsCalendarResources(t *testing.T) {
 			},
 			Events: []Event{{
 				RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-				DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+				EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			}},
 		},
 		event: Event{
 			RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-			DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+			EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 		},
 		view: CalendarView{
 			From: startsAt.Add(-time.Hour), To: startsAt.Add(time.Hour),
 			Events: []Event{{
 				RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-				DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+				EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			}},
 			Limit: 10,
 		},

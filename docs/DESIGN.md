@@ -516,7 +516,7 @@ Key components:
 * Void Action
 * Date Picker
 * Time Picker
-* Duration Input
+* End Date / Time Input
 * Weekly Repeat Builder
 * Schedule / Agenda List
 

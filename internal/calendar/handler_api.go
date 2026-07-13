@@ -87,7 +87,12 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid event request")
 		return
 	}
-	detail, err := h.service.CreateEvent(r.Context(), principal, aggregateRefCode, request.input(startsAt))
+	endsAt, err := parseTimestamp(request.EndsAt)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid event request")
+		return
+	}
+	detail, err := h.service.CreateEvent(r.Context(), principal, aggregateRefCode, request.input(startsAt, endsAt))
 	if h.writeServiceError(w, err) {
 		return
 	}

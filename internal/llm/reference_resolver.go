@@ -205,7 +205,7 @@ func (r *BusinessReferenceResolver) payloadForObject(ctx context.Context, actor 
 func eventPayload(event calendar.Event) map[string]any {
 	return map[string]any{
 		"ref_code": event.RefCode, "aggregate_ref_code": event.AggregateRefCode,
-		"starts_at": event.StartsAt, "duration_minutes": event.DurationMinutes,
+		"starts_at": event.StartsAt, "ends_at": event.EndsAt,
 		"metadata": event.Metadata, "status": event.Status, "tags": event.Tags,
 		"created_at": event.CreatedAt, "updated_at": event.UpdatedAt,
 	}

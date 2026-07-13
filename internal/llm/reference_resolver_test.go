@@ -63,6 +63,13 @@ func TestBusinessReferenceResolverResolvesSupportedObjectPayloads(t *testing.T) 
 				if !ok || len(events) != 1 {
 					t.Fatalf("aggregate payload = %#v", payload)
 				}
+				event, ok := events[0].(map[string]any)
+				if !ok || event["ends_at"] == nil || event["duration_minutes"] != nil {
+					t.Fatalf("aggregate event payload = %#v", events[0])
+				}
+			}
+			if tt.objectType == ref.ObjectTypeEvent && (payload["ends_at"] == nil || payload["duration_minutes"] != nil) {
+				t.Fatalf("event payload = %#v", payload)
 			}
 		})
 	}
@@ -144,13 +151,13 @@ func newReferenceResolverFixture(now time.Time, object ref.ObjectRef) *BusinessR
 				},
 				Events: []calendar.Event{{
 					RefCode: "EVT-00000001", AggregateRefCode: object.RefCode, StartsAt: now,
-					DurationMinutes: 30, Metadata: calendar.EventMetadata{Title: "Planning"},
+					EndsAt: now.Add(30 * time.Minute), Metadata: calendar.EventMetadata{Title: "Planning"},
 					Status: calendar.EventStatusScheduled, Tags: []string{"meeting"}, CreatedAt: now, UpdatedAt: now,
 				}},
 			},
 			event: calendar.Event{
 				RefCode: object.RefCode, AggregateRefCode: "EAG-00000001", StartsAt: now,
-				DurationMinutes: 30, Metadata: calendar.EventMetadata{Title: "Planning"},
+				EndsAt: now.Add(30 * time.Minute), Metadata: calendar.EventMetadata{Title: "Planning"},
 				Status: calendar.EventStatusScheduled, Tags: []string{"meeting"}, CreatedAt: now, UpdatedAt: now,
 			},
 		},

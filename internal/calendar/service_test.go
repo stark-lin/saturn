@@ -50,7 +50,7 @@ func TestServiceCreatesEmptyEventAggregateWithRefsAndTags(t *testing.T) {
 	}
 }
 
-func TestServiceCreatesEventUnderAggregateWithRefsDurationAndTags(t *testing.T) {
+func TestServiceCreatesEventUnderAggregateWithRefsEndTimeAndTags(t *testing.T) {
 	service, repo, references, audits := newTestService()
 	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Sprint"},
@@ -61,13 +61,14 @@ func TestServiceCreatesEventUnderAggregateWithRefsDurationAndTags(t *testing.T) 
 	}
 	repo.storeAggregate(aggregate.Aggregate)
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 
 	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
-		Metadata:        EventMetadata{Title: "Planning"},
-		Tags:            []string{" meeting ", "meeting"},
-		StartsAt:        startsAt,
-		DurationMinutes: 45,
-		Recurrence:      RecurrenceInput{Kind: RecurrenceKindSingle},
+		Metadata:   EventMetadata{Title: "Planning"},
+		Tags:       []string{" meeting ", "meeting"},
+		StartsAt:   startsAt,
+		EndsAt:     endsAt,
+		Recurrence: RecurrenceInput{Kind: RecurrenceKindSingle},
 	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
@@ -77,7 +78,7 @@ func TestServiceCreatesEventUnderAggregateWithRefsDurationAndTags(t *testing.T) 
 	}
 	if len(detail.Events) != 1 || detail.Events[0].RefCode != "CAL-00000002" ||
 		detail.Events[0].AggregateRefCode != detail.Aggregate.RefCode ||
-		detail.Events[0].DurationMinutes != 45 {
+		!detail.Events[0].EndsAt.Equal(endsAt) {
 		t.Fatalf("created events = %#v", detail.Events)
 	}
 	if references.registrations[0].ObjectType != ref.ObjectTypeEventAggregate ||
@@ -98,6 +99,7 @@ func TestServiceCreatesEventUnderAggregateWithRefsDurationAndTags(t *testing.T) 
 func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 0, 0, 0, time.UTC)
 	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Training"},
 	})
@@ -107,9 +109,9 @@ func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
 	repo.storeAggregate(aggregate.Aggregate)
 
 	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
-		Metadata:        EventMetadata{Title: "Training block"},
-		StartsAt:        startsAt,
-		DurationMinutes: 60,
+		Metadata: EventMetadata{Title: "Training block"},
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
 		Recurrence: RecurrenceInput{
 			Kind:      RecurrenceKindWeekly,
 			Weekdays:  []Weekday{WeekdayWednesday, WeekdayMonday, WeekdayMonday},
@@ -125,6 +127,9 @@ func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
 	got := make([]string, 0, len(detail.Events))
 	for _, event := range detail.Events {
 		got = append(got, event.StartsAt.Format(time.DateOnly))
+		if event.EndsAt.Hour() != 10 || event.EndsAt.Minute() != 0 || event.EndsAt.Format(time.DateOnly) != event.StartsAt.Format(time.DateOnly) {
+			t.Fatalf("weekly event time range = %s to %s, want same-day 09:00 to 10:00", event.StartsAt, event.EndsAt)
+		}
 	}
 	want := []string{"2026-06-01", "2026-06-03", "2026-06-08", "2026-06-10"}
 	for index := range want {
@@ -134,12 +139,79 @@ func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
 	}
 }
 
+func TestServiceExpandsWeeklyEventsWithTemplateEndClockAndDayOffset(t *testing.T) {
+	service, repo, _, _ := newTestService()
+	startsAt := time.Date(2026, time.June, 1, 23, 0, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 2, 1, 30, 0, 0, time.UTC)
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+		Metadata: EventAggregateMetadata{Title: "Overnight work"},
+	})
+	if err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+	repo.storeAggregate(aggregate.Aggregate)
+
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+		Metadata: EventMetadata{Title: "Overnight block"},
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
+		Recurrence: RecurrenceInput{
+			Kind:      RecurrenceKindWeekly,
+			Weekdays:  []Weekday{WeekdayMonday, WeekdayWednesday},
+			WeekCount: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create weekly events: %v", err)
+	}
+	if len(detail.Events) != 2 {
+		t.Fatalf("weekly event count = %d, want 2", len(detail.Events))
+	}
+	wantEnds := []time.Time{
+		time.Date(2026, time.June, 2, 1, 30, 0, 0, time.UTC),
+		time.Date(2026, time.June, 4, 1, 30, 0, 0, time.UTC),
+	}
+	for index, event := range detail.Events {
+		if !event.EndsAt.Equal(wantEnds[index]) {
+			t.Fatalf("event %d ends_at = %s, want %s", index, event.EndsAt, wantEnds[index])
+		}
+	}
+}
+
+func TestServiceRejectsEventEndAtOrBeforeStart(t *testing.T) {
+	tests := []struct {
+		name   string
+		endsAt time.Time
+	}{
+		{name: "end equals start", endsAt: time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)},
+		{name: "end precedes start", endsAt: time.Date(2026, time.June, 1, 8, 59, 0, 0, time.UTC)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, repo, _, _ := newTestService()
+			aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Invalid time"}}
+			repo.storeAggregate(aggregate)
+			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
+				Metadata: EventMetadata{Title: "Invalid event"},
+				StartsAt: time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC),
+				EndsAt:   tt.endsAt,
+			})
+			if !errors.Is(err, ErrInvalidEvent) {
+				t.Fatalf("create event error = %v, want invalid event", err)
+			}
+			if len(repo.events) != 0 {
+				t.Fatalf("invalid event wrote repository state: %#v", repo.events)
+			}
+		})
+	}
+}
+
 func TestServiceVoidsEventAndKeepsItOutOfMainViewButInAggregateEvents(t *testing.T) {
 	service, repo, references, audits := newTestService()
 	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Shift"}}
 	event := Event{
 		ID: 2, OwnerID: 7, AggregateID: 1, AggregateRefCode: aggregate.RefCode, RefCode: "CAL-00000002",
-		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), DurationMinutes: 30,
+		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, time.June, 2, 10, 30, 0, 0, time.UTC),
 		Metadata: EventMetadata{Title: "Shift block"}, Status: EventStatusScheduled,
 	}
 	repo.storeAggregate(aggregate)
@@ -182,7 +254,7 @@ func TestServiceFinishesEventAndKeepsItOutOfMainViewButInAggregateEvents(t *test
 	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Shift"}}
 	event := Event{
 		ID: 2, OwnerID: 7, AggregateID: 1, AggregateRefCode: aggregate.RefCode, RefCode: "CAL-00000002",
-		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), DurationMinutes: 30,
+		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, time.June, 2, 10, 30, 0, 0, time.UTC),
 		Metadata: EventMetadata{Title: "Shift block"}, Status: EventStatusScheduled,
 	}
 	repo.storeAggregate(aggregate)
@@ -225,7 +297,7 @@ func TestServiceVoidsFinishedEvent(t *testing.T) {
 	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Shift"}}
 	event := Event{
 		ID: 2, OwnerID: 7, AggregateID: 1, AggregateRefCode: aggregate.RefCode, RefCode: "CAL-00000002",
-		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), DurationMinutes: 30,
+		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, time.June, 2, 10, 30, 0, 0, time.UTC),
 		Metadata: EventMetadata{Title: "Shift block"}, Status: EventStatusFinished,
 	}
 	repo.storeAggregate(aggregate)
@@ -285,10 +357,11 @@ func TestServiceRejectsInvalidWeeklyInputBeforeWriting(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Bad recurrence"}}
 	repo.storeAggregate(aggregate)
+	startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
 	_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
-		Metadata:        EventMetadata{Title: "Bad event"},
-		StartsAt:        time.Now(),
-		DurationMinutes: 30,
+		Metadata: EventMetadata{Title: "Bad event"},
+		StartsAt: startsAt,
+		EndsAt:   startsAt.Add(30 * time.Minute),
 		Recurrence: RecurrenceInput{
 			Kind:      RecurrenceKindWeekly,
 			Weekdays:  []Weekday{"funday"},
@@ -308,7 +381,7 @@ func TestServiceListsAggregatesAndGetsEvent(t *testing.T) {
 	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Shift"}}
 	event := Event{
 		ID: 2, OwnerID: 7, AggregateID: aggregate.ID, AggregateRefCode: aggregate.RefCode, RefCode: "CAL-00000002",
-		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), DurationMinutes: 30,
+		StartsAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, time.June, 2, 10, 30, 0, 0, time.UTC),
 		Metadata: EventMetadata{Title: "Shift block"}, Status: EventStatusScheduled,
 	}
 	repo.storeAggregate(aggregate)
@@ -419,7 +492,7 @@ func (r *fakeRepository) CreateEvent(_ context.Context, ownerID int64, aggregate
 	aggregate := r.aggregates[aggregateID]
 	event := Event{
 		ID: r.nextID, OwnerID: ownerID, AggregateID: aggregateID, AggregateRefCode: aggregate.RefCode,
-		StartsAt: input.StartsAt, DurationMinutes: input.DurationMinutes,
+		StartsAt: input.StartsAt, EndsAt: input.EndsAt,
 		Metadata: input.Metadata, Status: EventStatusScheduled, Tags: input.Tags, CreatedAt: time.Now().UTC(),
 	}
 	r.events[event.ID] = event

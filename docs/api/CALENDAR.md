@@ -61,14 +61,14 @@ EventAggregate.status: active, only stored in the ObjectRef projection
 Event.status: scheduled | finished | voided
 ```
 
-Event only uses a start time and a duration:
+Event uses explicit start and end timestamps:
 
 ```text
-starts_at          RFC3339 timestamp
-duration_minutes  Positive integer minutes
+starts_at  RFC3339 timestamp
+ends_at    RFC3339 timestamp, later than starts_at
 ```
 
-Event does not design an `ends_at`; the client can use `starts_at + duration_minutes` to calculate the display end time.
+The server stores both timestamps. Clients do not calculate an event end from a duration.
 
 ## 5. Request Contract
 
@@ -101,7 +101,7 @@ POST /api/calendar/aggregates/CAL-00000001/events
   },
   "tags": ["workout"],
   "starts_at": "2026-06-01T09:00:00Z",
-  "duration_minutes": 60,
+  "ends_at": "2026-06-01T10:00:00Z",
   "recurrence": {
     "kind": "weekly",
     "weekdays": ["mon", "wed"],
@@ -129,7 +129,7 @@ Event creation field rules:
 | `metadata.location` | No | Saved after trimming; immutable after creation |
 | `tags` | No | Trimmed, empty values removed, and deduplicated before associating with each generated Event |
 | `starts_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time |
-| `duration_minutes` | Yes | Positive integer minutes |
+| `ends_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time; must be later than `starts_at` |
 | `recurrence.kind` | No | `single` or `weekly`; defaults to `single` |
 | `recurrence.weekdays` | Weekly only | `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`, allows multiple selections, duplicates will be removed |
 | `recurrence.week_count` | Weekly only | Positive integer weeks; the current service layer limits the max to 520 |
@@ -140,6 +140,7 @@ Recurrence rules:
 single: Only generates 1 Event with the start time being starts_at.
 weekly: Using Monday of the week containing starts_at as the starting point, expands according to weekdays over week_count weeks.
 The first week of weekly recurrence will not generate events earlier than starts_at.
+Each weekly instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
 Duplicate events are allowed; there is no uniqueness constraint on the same owner, same start time, and same title.
 ```
 
@@ -186,7 +187,7 @@ Create and read aggregate responses:
       "ref_code": "CAL-00000002",
       "aggregate_ref_code": "CAL-00000001",
       "starts_at": "2026-06-01T09:00:00Z",
-      "duration_minutes": 60,
+      "ends_at": "2026-06-01T10:00:00Z",
       "metadata": {
         "title": "Training session",
         "description": "Strength",
@@ -227,7 +228,7 @@ Read, finish, and void responses for a single Event:
     "ref_code": "CAL-00000002",
     "aggregate_ref_code": "CAL-00000001",
     "starts_at": "2026-06-01T09:00:00Z",
-    "duration_minutes": 60,
+    "ends_at": "2026-06-01T10:00:00Z",
     "metadata": {
       "title": "Training session",
       "description": "Strength",
@@ -251,6 +252,7 @@ Every Event must belong to an EventAggregate.
 Event creation must specify the parent aggregate via `/api/calendar/aggregates/{ref_code}/events`, similar to Accounting Transactions which must specify an Account.
 EventAggregate metadata is immutable after creation.
 Event metadata is immutable after creation.
+Event starts_at and ends_at are immutable after creation, and ends_at must be later than starts_at.
 EventAggregate and Event tags each hang onto their own object_ref_id.
 Event does not provide a delete endpoint; status transitions only allow scheduled -> finished, scheduled -> voided, finished -> voided.
 finished / voided Events do not enter the main CalendarView.
@@ -283,7 +285,7 @@ HTTP 404
 
 | Status | Code | Condition |
 | --- | --- | --- |
-| `400` | `invalid_request` | Invalid creation request JSON/unknown fields, query, `ref_code`, dates, duration, weekday, or enumerated values |
+| `400` | `invalid_request` | Invalid creation request JSON/unknown fields, query, `ref_code`, timestamps or timestamp order, weekday, or enumerated values |
 | `401` | `unauthorized` | Unauthenticated or missing authenticated Principal |
 | `404` | `not_found` | EventAggregate / Event does not exist, or the current actor has no access rights |
 | `409` | `conflict` | Finishing an Event that is already `finished` / `voided`, or voiding an Event that is already `voided` |
