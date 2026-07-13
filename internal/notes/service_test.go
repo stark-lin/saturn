@@ -85,35 +85,14 @@ func TestServiceUpdateAppendsVersionAndAdvancesCurrentPointer(t *testing.T) {
 	}
 }
 
-func TestServiceRestoreCopiesOldContentIntoNewVersion(t *testing.T) {
-	service, _, _, _ := newServiceFixture()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
-	created := mustCreateNote(t, service, actor, "First\none\n\nOriginal")
-	updated, err := service.UpdateNote(context.Background(), actor, created.RefCode, "Second\ntwo\n\nChanged")
-	if err != nil {
-		t.Fatalf("update note: %v", err)
-	}
-
-	restored, err := service.RestoreVersion(context.Background(), actor, created.RefCode, created.CurrentVersionRef)
-	if err != nil {
-		t.Fatalf("restore version: %v", err)
-	}
-	if restored.CurrentVersionRef == created.CurrentVersionRef || restored.CurrentVersionRef == updated.CurrentVersionRef || restored.CurrentVersionNumber != 3 {
-		t.Fatalf("restored current identity = %#v", restored)
-	}
-	if restored.Markdown != created.Markdown || restored.CurrentParentVersionRef != created.CurrentVersionRef || restored.CurrentVersionOperation != VersionOperationRestore {
-		t.Fatalf("restored content/lineage = %#v", restored)
-	}
-	versions, err := service.ListVersions(context.Background(), actor, created.RefCode)
-	if err != nil || len(versions) != 3 || versions[0].VersionNumber != 3 {
-		t.Fatalf("versions = %#v, error = %v", versions, err)
-	}
-}
-
-func TestServiceSoftDeleteAndRestorePreserveObjectsAndVersions(t *testing.T) {
-	service, repo, _, _ := newServiceFixture()
+func TestServiceHardDeleteRemovesNoteVersionsAndReferences(t *testing.T) {
+	service, repo, references, audits := newServiceFixture()
 	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
 	created := mustCreateNote(t, service, actor, "Private\nsecret\n\nBody")
+	updated, err := service.UpdateNote(context.Background(), actor, created.RefCode, "Private updated\nsecret\n\nReplacement")
+	if err != nil {
+		t.Fatalf("update note before delete: %v", err)
+	}
 
 	if err := service.DeleteNote(context.Background(), actor, created.RefCode); err != nil {
 		t.Fatalf("delete note: %v", err)
@@ -121,13 +100,20 @@ func TestServiceSoftDeleteAndRestorePreserveObjectsAndVersions(t *testing.T) {
 	if _, err := service.GetNote(context.Background(), actor, created.RefCode); !errors.Is(err, ErrNoteNotFound) {
 		t.Fatalf("deleted note read error = %v", err)
 	}
-	version, err := service.GetVersion(context.Background(), actor, created.CurrentVersionRef)
-	if err != nil || version.Content != created.Markdown || len(repo.notes) != 1 {
-		t.Fatalf("preserved version = %#v notes = %#v error = %v", version, repo.notes, err)
+	if _, err := service.GetVersion(context.Background(), actor, created.CurrentVersionRef); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("deleted initial version read error = %v", err)
 	}
-	restored, err := service.RestoreNote(context.Background(), actor, created.RefCode)
-	if err != nil || restored.CurrentVersionRef != created.CurrentVersionRef || restored.Status != NoteDraft {
-		t.Fatalf("restored note = %#v, error = %v", restored, err)
+	if _, err := service.GetVersion(context.Background(), actor, updated.CurrentVersionRef); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("deleted current version read error = %v", err)
+	}
+	if len(repo.notes) != 0 || len(repo.versions) != 0 {
+		t.Fatalf("hard-deleted repository state = notes %#v versions %#v", repo.notes, repo.versions)
+	}
+	if len(references.deletes) != 3 || references.deletes[0].objectType != ref.ObjectTypeNoteVersion || references.deletes[1].objectType != ref.ObjectTypeNoteVersion || references.deletes[2].objectType != ref.ObjectTypeNote {
+		t.Fatalf("deleted references = %#v", references.deletes)
+	}
+	if len(audits.events) != 7 || audits.events[4].Reason != deleteReasonCascadeNoteDelete || audits.events[5].Reason != deleteReasonCascadeNoteDelete || audits.events[6].TargetRefCode != created.RefCode {
+		t.Fatalf("delete audits = %#v", audits.events)
 	}
 }
 
@@ -188,7 +174,7 @@ func (r *fakeNoteRepository) ListNotes(_ context.Context, ownerID int64, query Q
 	notes := make([]Note, 0)
 	for _, note := range r.notes {
 		note = r.hydrateNote(note)
-		if note.OwnerID != ownerID || note.DeletedAt != nil {
+		if note.OwnerID != ownerID {
 			continue
 		}
 		if query.Text != "" && !strings.Contains(note.Title+note.Markdown, query.Text) {
@@ -207,9 +193,9 @@ func (r *fakeNoteRepository) CreateNote(_ context.Context, ownerID int64) (Note,
 	return note, nil
 }
 
-func (r *fakeNoteRepository) FindNoteByRefCode(_ context.Context, ownerID int64, refCode string, includeDeleted bool) (Note, error) {
+func (r *fakeNoteRepository) FindNoteByRefCode(_ context.Context, ownerID int64, refCode string) (Note, error) {
 	for _, note := range r.notes {
-		if note.OwnerID == ownerID && note.RefCode == refCode && (includeDeleted || note.DeletedAt == nil) {
+		if note.OwnerID == ownerID && note.RefCode == refCode {
 			return r.hydrateNote(note), nil
 		}
 	}
@@ -217,7 +203,7 @@ func (r *fakeNoteRepository) FindNoteByRefCode(_ context.Context, ownerID int64,
 }
 
 func (r *fakeNoteRepository) LockNoteByRefCode(ctx context.Context, ownerID int64, refCode string) (Note, error) {
-	return r.FindNoteByRefCode(ctx, ownerID, refCode, true)
+	return r.FindNoteByRefCode(ctx, ownerID, refCode)
 }
 
 func (r *fakeNoteRepository) CreateVersion(_ context.Context, input CreateVersionInput) (Version, error) {
@@ -243,7 +229,7 @@ func (r *fakeNoteRepository) FindVersionByRefCode(_ context.Context, ownerID int
 }
 
 func (r *fakeNoteRepository) ListVersions(_ context.Context, ownerID int64, noteRefCode string) ([]Version, error) {
-	note, err := r.FindNoteByRefCode(context.Background(), ownerID, noteRefCode, true)
+	note, err := r.FindNoteByRefCode(context.Background(), ownerID, noteRefCode)
 	if err != nil {
 		return nil, err
 	}
@@ -268,19 +254,17 @@ func (r *fakeNoteRepository) SetCurrentVersion(_ context.Context, ownerID int64,
 	return nil
 }
 
-func (r *fakeNoteRepository) SetNoteDeleted(_ context.Context, ownerID int64, noteID int64, deleted bool) error {
+func (r *fakeNoteRepository) DeleteNote(_ context.Context, ownerID int64, noteID int64) error {
 	note, ok := r.notes[noteID]
 	if !ok || note.OwnerID != ownerID {
 		return ErrNoteNotFound
 	}
-	if deleted {
-		now := note.UpdatedAt.Add(time.Second)
-		note.DeletedAt = &now
-	} else {
-		note.DeletedAt = nil
+	delete(r.notes, noteID)
+	for versionID, version := range r.versions {
+		if version.NoteID == noteID {
+			delete(r.versions, versionID)
+		}
 	}
-	note.UpdatedAt = note.UpdatedAt.Add(time.Second)
-	r.notes[noteID] = note
 	return nil
 }
 
@@ -312,6 +296,12 @@ type fakeReferences struct {
 	repo          *fakeNoteRepository
 	registrations []ref.Registration
 	updates       []ref.ProjectionUpdate
+	deletes       []fakeReferenceDelete
+}
+
+type fakeReferenceDelete struct {
+	objectType ref.ObjectType
+	objectID   int64
 }
 
 func (r *fakeReferences) ClaimCode(_ context.Context, objectType ref.ObjectType) (string, error) {
@@ -353,6 +343,11 @@ func (r *fakeReferences) UpdateProjection(_ context.Context, update ref.Projecti
 	note.Status = NoteStatus(update.Status)
 	r.repo.notes[note.ID] = note
 	return ref.ObjectRef{ID: note.ObjectRefID, RefCode: note.RefCode, Title: note.Title, Tags: note.Tags, Status: string(note.Status)}, nil
+}
+
+func (r *fakeReferences) Delete(_ context.Context, _ int64, objectType ref.ObjectType, objectID int64) error {
+	r.deletes = append(r.deletes, fakeReferenceDelete{objectType: objectType, objectID: objectID})
+	return nil
 }
 
 type fakeAudits struct {

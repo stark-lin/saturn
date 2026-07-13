@@ -68,7 +68,6 @@ const listRecentObjectRefsByOwner = `-- name: ListRecentObjectRefsByOwner :many
 SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
 WHERE owner_id = $1
-  AND status <> 'deleted'
 ORDER BY updated_at DESC, ref_code DESC
 LIMIT $2
 `
@@ -83,7 +82,6 @@ type ListRecentObjectRefsByOwnerParams struct {
 //	SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 //	FROM object_refs
 //	WHERE owner_id = $1
-//	  AND status <> 'deleted'
 //	ORDER BY updated_at DESC, ref_code DESC
 //	LIMIT $2
 func (q *Queries) ListRecentObjectRefsByOwner(ctx context.Context, arg ListRecentObjectRefsByOwnerParams) ([]ObjectRef, error) {

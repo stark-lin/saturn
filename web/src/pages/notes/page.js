@@ -37,8 +37,6 @@ function versionOperationLabel(operation) {
   switch (operation) {
     case "create":
       return "Created";
-    case "restore":
-      return "Restored";
     default:
       return "Updated";
   }

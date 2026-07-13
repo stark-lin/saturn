@@ -111,34 +111,6 @@ func TestServiceResolveMetadataIsOwnerOnly(t *testing.T) {
 	}
 }
 
-func TestServiceDeletedMetadataIsNotSearchable(t *testing.T) {
-	repo := newFakeRepository()
-	service := NewService(repo)
-	deleted := mustRegister(t, service, Registration{
-		OwnerID:    7,
-		ObjectType: ObjectTypeNote,
-		ObjectID:   3,
-		Title:      "Deleted note",
-		Status:     deletedObjectStatus,
-	})
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
-
-	if _, err := service.ResolveMetadata(context.Background(), actor, deleted.RefCode); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("resolve deleted metadata error = %v, want not found", err)
-	}
-	recent, err := service.ListRecentMetadata(context.Background(), actor, 10)
-	if err != nil || len(recent) != 0 {
-		t.Fatalf("recent deleted metadata = %#v, error = %v", recent, err)
-	}
-	searched, err := service.SearchMetadata(context.Background(), actor, MetadataSearchQuery{
-		Statuses: []string{deletedObjectStatus},
-		Limit:    10,
-	})
-	if err != nil || len(searched) != 0 {
-		t.Fatalf("searched deleted metadata = %#v, error = %v", searched, err)
-	}
-}
-
 func TestServiceListRecentMetadataIsOwnerOnly(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)

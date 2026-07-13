@@ -14,9 +14,7 @@ type NoteService interface {
 	GetVersion(ctx context.Context, actor auth.Principal, refCode string) (Version, error)
 	ListVersions(ctx context.Context, actor auth.Principal, noteRefCode string) ([]Version, error)
 	UpdateNote(ctx context.Context, actor auth.Principal, refCode string, markdown string) (Note, error)
-	RestoreVersion(ctx context.Context, actor auth.Principal, noteRefCode string, versionRefCode string) (Note, error)
 	DeleteNote(ctx context.Context, actor auth.Principal, refCode string) error
-	RestoreNote(ctx context.Context, actor auth.Principal, refCode string) (Note, error)
 }
 
 type Handler struct {

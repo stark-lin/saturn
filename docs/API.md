@@ -178,7 +178,7 @@ Metadata collection queries receive a JSON body via POST /api/platform/object-re
 Recently updated metadata queries are returned as a JSON list by GET /api/platform/recent-objects?limit=<count>; limit defaults to 10, with a range of 1..50
 Metadata responses uniformly include title, tags, and status; tagless objects return an empty array, and tags retain their first-occurrence order after server-side normalization
 Whenever ref_code is returned in a business object response, tags must also be returned simultaneously; SYS-00000000 is used only for system-level audit targets, is not registered as a business object, and does not require tags
-Source business modules synchronously maintain the corresponding metadata projection when creating, updating, or deleting objects that affect title/tags/status; soft-deleted Notes retain their internal `nte-obj` projection with status `deleted`, but deleted projections are hidden from exact metadata lookup, collection search, and recent-object results
+Source business modules synchronously maintain the corresponding metadata projection when creating or updating objects that affect title/tags/status, and hard deletion removes the projection; Notes hard deletion removes both its `nte-obj` and every associated `version-obj`
 These metadata queries only allow access by the resource owner; status does not grant read permissions, nor does the superuser role relax this entry point
 Metadata interfaces do not return business object contents, owner_ids, internal object ids, or business detail URLs; the actual reading endpoint is still defined by the module that owns the object
 ```

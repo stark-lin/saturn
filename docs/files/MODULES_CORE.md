@@ -218,8 +218,8 @@ Responsibilities:
 ```text
 nte-obj stable logical Note and current-version pointer
 version-obj immutable complete Note snapshots
-Version listing, independent reads, and restore-by-copy
-Logical Note soft delete and restore
+Version listing and independent reads
+Transactional hard deletion of the logical Note, all versions, and all ObjectRefs
 Tag association through platform capability
 Collection
 NoteLink
@@ -237,7 +237,8 @@ Collection solely belongs to the Notes module
 Tag uses ObjectRef tags projection, Notes does not maintain an independent tag table
 NoteSource is an abstraction for external content sources, RSS is a first-class source
 nte-obj and version-obj share the NTE module RefCode namespace; object_refs.object_type distinguishes them
-Content updates and restores create new version objects; existing versions are never modified
+Content updates create new version objects; existing versions are never modified
+Content restoration is not exposed; deleting a logical Note permanently removes all its versions
 ```
 
 Prohibited:

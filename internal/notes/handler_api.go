@@ -114,36 +114,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) RestoreVersion(w http.ResponseWriter, r *http.Request) {
-	principal, noteRefCode, ok := bindOwnedNoteRequest(w, r)
-	if !ok {
-		return
-	}
-	versionRefCode := ref.NormalizeCode(r.PathValue("version_ref_code"))
-	if !ref.ValidCode(versionRefCode) || !ref.CodeMatchesModule(versionRefCode, ref.ModuleNotes) {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid version_ref_code")
-		return
-	}
-	note, err := h.service.RestoreVersion(r.Context(), principal, noteRefCode, versionRefCode)
-	if h.writeServiceError(w, err) {
-		return
-	}
-	w.Header().Set("Location", "/api/notes/versions/by-ref/"+note.CurrentVersionRef)
-	httpx.WriteJSON(w, http.StatusCreated, detailResponse(note))
-}
-
-func (h *Handler) RestoreNote(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
-	if !ok {
-		return
-	}
-	note, err := h.service.RestoreNote(r.Context(), principal, refCode)
-	if h.writeServiceError(w, err) {
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, detailResponse(note))
-}
-
 func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false

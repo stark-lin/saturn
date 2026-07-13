@@ -15,8 +15,6 @@ var (
 	ErrInvalidMetadataSearchQuery = errors.New("invalid metadata search query")
 )
 
-const deletedObjectStatus = "deleted"
-
 type Service struct {
 	repo Repository
 }
@@ -96,7 +94,7 @@ func (s *Service) ResolveMetadata(ctx context.Context, actor auth.Principal, cod
 	if !CodeMatchesObjectType(object.RefCode, object.ObjectType) {
 		return Metadata{}, ErrInvalidObjectRef
 	}
-	if actor.ID != object.OwnerID || object.Status == deletedObjectStatus {
+	if actor.ID != object.OwnerID {
 		return Metadata{}, ErrNotFound
 	}
 	return metadataFromObjectRef(object)
@@ -115,9 +113,6 @@ func (s *Service) ListRecentMetadata(ctx context.Context, actor auth.Principal, 
 	}
 	metadata := make([]Metadata, 0, len(objects))
 	for _, object := range objects {
-		if object.Status == deletedObjectStatus {
-			continue
-		}
 		next, err := metadataFromObjectRef(object)
 		if err != nil {
 			return nil, err
@@ -144,9 +139,6 @@ func (s *Service) SearchMetadata(ctx context.Context, actor auth.Principal, quer
 	}
 	metadata := make([]Metadata, 0, len(objects))
 	for _, object := range objects {
-		if object.Status == deletedObjectStatus {
-			continue
-		}
 		next, err := metadataFromObjectRef(object)
 		if err != nil {
 			return nil, err

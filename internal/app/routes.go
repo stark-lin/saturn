@@ -65,9 +65,7 @@ func (a *App) registerRoutes() {
 	a.Router.Handle("GET /api/notes/{ref_code}", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.Get)))
 	a.Router.Handle("GET /api/notes/{ref_code}/versions", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.ListVersions)))
 	a.Router.Handle("PATCH /api/notes/{ref_code}", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.Update)))
-	a.Router.Handle("POST /api/notes/{ref_code}/versions/{version_ref_code}/restore", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.RestoreVersion)))
 	a.Router.Handle("DELETE /api/notes/{ref_code}", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.Delete)))
-	a.Router.Handle("POST /api/notes/{ref_code}/restore", auth.AuthenticateBearer(a.Auth, http.HandlerFunc(a.NotesHTTP.RestoreNote)))
 	a.Router.HandleFunc("/", a.web)
 }
 

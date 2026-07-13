@@ -219,6 +219,48 @@ func TestLLMRoutesAreRegistered(t *testing.T) {
 	}
 }
 
+func TestNotesRoutesExcludeRestoreOperations(t *testing.T) {
+	a := newTestApp(t)
+
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/notes"},
+		{method: http.MethodPost, path: "/api/notes"},
+		{method: http.MethodGet, path: "/api/notes/versions/by-ref/NTE-00000002"},
+		{method: http.MethodGet, path: "/api/notes/NTE-00000001"},
+		{method: http.MethodGet, path: "/api/notes/NTE-00000001/versions"},
+		{method: http.MethodPatch, path: "/api/notes/NTE-00000001"},
+		{method: http.MethodDelete, path: "/api/notes/NTE-00000001"},
+	} {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, test.path, nil)
+			rec := httptest.NewRecorder()
+
+			a.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("notes route status = %d; want %d", rec.Code, http.StatusUnauthorized)
+			}
+		})
+	}
+
+	for _, path := range []string{
+		"/api/notes/NTE-00000001/restore",
+		"/api/notes/NTE-00000001/versions/NTE-00000002/restore",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		rec := httptest.NewRecorder()
+
+		a.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("removed restore route %s status = %d; want %d", path, rec.Code, http.StatusNotFound)
+		}
+	}
+}
+
 func TestPlatformObjectRefRoutesAreRegistered(t *testing.T) {
 	a := newTestApp(t)
 

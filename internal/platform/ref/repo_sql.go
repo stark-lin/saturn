@@ -165,8 +165,7 @@ func metadataSearchStatement(ownerID int64, query MetadataSearchQuery) (string, 
 	var statement strings.Builder
 	statement.WriteString(`SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
-WHERE owner_id = $1
-  AND status <> 'deleted'`)
+WHERE owner_id = $1`)
 	arguments := []any{ownerID}
 	addArgument := func(value any) string {
 		arguments = append(arguments, value)

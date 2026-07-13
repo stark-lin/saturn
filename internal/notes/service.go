@@ -14,10 +14,13 @@ import (
 
 var ErrDependencyUnavailable = errors.New("notes dependency is not wired")
 
+const deleteReasonCascadeNoteDelete = "cascade_note_delete"
+
 type ObjectReferenceService interface {
 	ClaimCode(ctx context.Context, objectType ref.ObjectType) (string, error)
 	Register(ctx context.Context, registration ref.Registration) (ref.ObjectRef, error)
 	UpdateProjection(ctx context.Context, update ref.ProjectionUpdate) (ref.ObjectRef, error)
+	Delete(ctx context.Context, ownerID int64, objectType ref.ObjectType, objectID int64) error
 }
 
 type AuditService interface {
@@ -116,7 +119,7 @@ func (s *Service) CreateNote(ctx context.Context, actor auth.Principal, markdown
 		if err := s.recordVersionAndNoteAudits(txCtx, actor, versionObject.RefCode, noteObject.RefCode, audit.ActionCreate, ""); err != nil {
 			return err
 		}
-		created, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, noteObject.RefCode, false)
+		created, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, noteObject.RefCode)
 		return err
 	})
 	if err != nil {
@@ -132,7 +135,7 @@ func (s *Service) GetNote(ctx context.Context, actor auth.Principal, refCode str
 	if s.repo == nil {
 		return Note{}, ErrRepositoryUnavailable
 	}
-	return s.repo.FindNoteByRefCode(ctx, actor.ID, ref.NormalizeCode(refCode), false)
+	return s.repo.FindNoteByRefCode(ctx, actor.ID, ref.NormalizeCode(refCode))
 }
 
 func (s *Service) GetVersion(ctx context.Context, actor auth.Principal, refCode string) (Version, error) {
@@ -168,71 +171,6 @@ func (s *Service) UpdateNote(ctx context.Context, actor auth.Principal, refCode 
 	})
 }
 
-func (s *Service) RestoreVersion(ctx context.Context, actor auth.Principal, noteRefCode string, versionRefCode string) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
-	}
-	if err := s.requireWriteDependencies(); err != nil {
-		return Note{}, err
-	}
-	noteRefCode = ref.NormalizeCode(noteRefCode)
-	versionRefCode = ref.NormalizeCode(versionRefCode)
-	newVersionRefCode, err := s.references.ClaimCode(ctx, ref.ObjectTypeNoteVersion)
-	if err != nil {
-		return Note{}, err
-	}
-
-	var restored Note
-	err = s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
-		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, noteRefCode)
-		if err != nil || note.DeletedAt != nil {
-			if err == nil {
-				err = ErrNoteNotFound
-			}
-			return err
-		}
-		source, err := s.repo.FindVersionByRefCode(txCtx, actor.ID, versionRefCode)
-		if err != nil {
-			return err
-		}
-		if source.NoteID != note.ID {
-			return ErrVersionNotFound
-		}
-		version, err := s.repo.CreateVersion(txCtx, CreateVersionInput{
-			NoteID: note.ID, ParentVersionID: &source.ID, VersionNumber: note.CurrentVersionNumber + 1,
-			Title: source.Title, Content: source.Content, ContentType: source.ContentType, Operation: VersionOperationRestore,
-		})
-		if err != nil {
-			return err
-		}
-		versionObject, err := s.references.Register(txCtx, ref.Registration{
-			OwnerID: actor.ID, RefCode: newVersionRefCode, ObjectType: ref.ObjectTypeNoteVersion, ObjectID: version.ID,
-			Title: source.Title, Tags: source.Tags, Status: "immutable",
-		})
-		if err != nil {
-			return err
-		}
-		if err := s.repo.SetCurrentVersion(txCtx, actor.ID, note.ID, version.ID); err != nil {
-			return err
-		}
-		if _, err := s.references.UpdateProjection(txCtx, ref.ProjectionUpdate{
-			OwnerID: actor.ID, ObjectType: ref.ObjectTypeNote, ObjectID: note.ID,
-			Title: source.Title, Tags: source.Tags, Status: string(NoteDraft),
-		}); err != nil {
-			return err
-		}
-		if err := s.recordVersionAndNoteAudits(txCtx, actor, versionObject.RefCode, note.RefCode, audit.ActionUpdate, "restore_version"); err != nil {
-			return err
-		}
-		restored, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, note.RefCode, false)
-		return err
-	})
-	if err != nil {
-		return Note{}, s.recordWriteFailure(ctx, actor, audit.ActionUpdate, noteRefCode, err)
-	}
-	return restored, nil
-}
-
 func (s *Service) DeleteNote(ctx context.Context, actor auth.Principal, refCode string) error {
 	if actor.IsZero() {
 		return auth.ErrUnauthenticated
@@ -243,72 +181,41 @@ func (s *Service) DeleteNote(ctx context.Context, actor auth.Principal, refCode 
 	refCode = ref.NormalizeCode(refCode)
 	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, refCode)
-		if err != nil || note.DeletedAt != nil {
-			if err == nil {
-				err = ErrNoteNotFound
+		if err != nil {
+			return err
+		}
+		versions, err := s.repo.ListVersions(txCtx, actor.ID, note.RefCode)
+		if err != nil {
+			return err
+		}
+		for _, version := range versions {
+			if _, err := s.audit.Record(txCtx, audit.Event{
+				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+				TargetRefCode: version.RefCode, Result: audit.ResultSuccess, Reason: deleteReasonCascadeNoteDelete,
+			}); err != nil {
+				return err
 			}
-			return err
 		}
-		if err := s.repo.SetNoteDeleted(txCtx, actor.ID, note.ID, true); err != nil {
-			return err
-		}
-		if _, err := s.references.UpdateProjection(txCtx, ref.ProjectionUpdate{
-			OwnerID: actor.ID, ObjectType: ref.ObjectTypeNote, ObjectID: note.ID,
-			Title: note.Title, Tags: note.Tags, Status: string(NoteDeleted),
+		if _, err := s.audit.Record(txCtx, audit.Event{
+			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			TargetRefCode: note.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
 		}
-		_, err = s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
-			TargetRefCode: note.RefCode, Result: audit.ResultSuccess,
-		})
-		return err
+		for _, version := range versions {
+			if err := s.references.Delete(txCtx, note.OwnerID, ref.ObjectTypeNoteVersion, version.ID); err != nil {
+				return err
+			}
+		}
+		if err := s.references.Delete(txCtx, note.OwnerID, ref.ObjectTypeNote, note.ID); err != nil {
+			return err
+		}
+		return s.repo.DeleteNote(txCtx, note.OwnerID, note.ID)
 	})
 	if err != nil {
 		return s.recordWriteFailure(ctx, actor, audit.ActionDelete, refCode, err)
 	}
 	return nil
-}
-
-func (s *Service) RestoreNote(ctx context.Context, actor auth.Principal, refCode string) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
-	}
-	if err := s.requireWriteDependencies(); err != nil {
-		return Note{}, err
-	}
-	refCode = ref.NormalizeCode(refCode)
-	var restored Note
-	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
-		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, refCode)
-		if err != nil || note.DeletedAt == nil {
-			if err == nil {
-				err = ErrNoteNotFound
-			}
-			return err
-		}
-		if err := s.repo.SetNoteDeleted(txCtx, actor.ID, note.ID, false); err != nil {
-			return err
-		}
-		if _, err := s.references.UpdateProjection(txCtx, ref.ProjectionUpdate{
-			OwnerID: actor.ID, ObjectType: ref.ObjectTypeNote, ObjectID: note.ID,
-			Title: note.Title, Tags: note.Tags, Status: string(NoteDraft),
-		}); err != nil {
-			return err
-		}
-		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionUpdate,
-			TargetRefCode: note.RefCode, Result: audit.ResultSuccess, Reason: "restore_note",
-		}); err != nil {
-			return err
-		}
-		restored, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, note.RefCode, false)
-		return err
-	})
-	if err != nil {
-		return Note{}, s.recordWriteFailure(ctx, actor, audit.ActionUpdate, refCode, err)
-	}
-	return restored, nil
 }
 
 type nextVersionContent struct {
@@ -334,10 +241,7 @@ func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, n
 	var updated Note
 	err = s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, noteRefCode)
-		if err != nil || note.DeletedAt != nil {
-			if err == nil {
-				err = ErrNoteNotFound
-			}
+		if err != nil {
 			return err
 		}
 		parentVersionID := note.CurrentVersionID
@@ -367,7 +271,7 @@ func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, n
 		if err := s.recordVersionAndNoteAudits(txCtx, actor, versionObject.RefCode, note.RefCode, audit.ActionUpdate, ""); err != nil {
 			return err
 		}
-		updated, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, note.RefCode, false)
+		updated, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, note.RefCode)
 		return err
 	})
 	if err != nil {

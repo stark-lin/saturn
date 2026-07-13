@@ -160,17 +160,17 @@ Business objects are created by clients calling the server create endpoint of th
 
 Upon receiving a create request, the business module service should, within the same creation operation, create the source record, claim the next unified `ref_code` from `platform/ref`, register the reference, and record the audit event; only upon successful response is the claimed `ref_code` returned to the client. If the transaction fails, no addressable new resource exists externally; the underlying global sequence allows gaps due to transaction rollbacks, and numbers must not be reused.
 
-When updating an object's title, tags, status, or user-visible content that affects the display of the last updated time, the source business module synchronously updates the `object_refs` display projection in the same business operation. Deletion semantics are module-owned: hard-deleted objects remove their ObjectRef, while the Notes `nte-obj` uses soft deletion and retains its ObjectRef plus all immutable `version-obj` records for restore and audit.
+When updating an object's title, tags, status, or user-visible content that affects the display of the last updated time, the source business module synchronously updates the `object_refs` display projection in the same business operation. Hard-deleted objects remove their ObjectRefs. Notes deletion removes the `nte-obj` plus every immutable `version-obj` belonging to it in the same transaction.
 
 Notes is the canonical example of a module namespace containing multiple types:
 
 ```text
 NTE RefCode namespace
-├── nte-obj: stable logical identity, mutable current-version pointer, soft-deletable
+├── nte-obj: stable logical identity and mutable current-version pointer
 └── version-obj: immutable complete content snapshot, independently resolvable
 ```
 
-Creating a Note claims one NTE code for each object. Every update or old-version restore claims a new NTE code for a new `version-obj`; the `nte-obj` then advances its current pointer. Restoring old content never rewinds the pointer to an existing version.
+Creating a Note claims one NTE code for each object. Every update claims a new NTE code for a new `version-obj`; the `nte-obj` then advances its current pointer. The API does not restore old content, and hard deletion permanently removes the logical and version ObjectRefs.
 
 Global metadata queries provide owner-only exact reference code queries, JSON body condition queries, and recent updates lists. Exact queries use the RESTful ObjectRef metadata endpoint:
 

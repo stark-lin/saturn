@@ -6,17 +6,15 @@ import "time"
 type NoteStatus string
 
 const (
-	NoteDraft   NoteStatus = "draft"
-	NoteDeleted NoteStatus = "deleted"
+	NoteDraft NoteStatus = "draft"
 )
 
 type VersionOperation string
 
 const (
-	VersionOperationCreate  VersionOperation = "create"
-	VersionOperationUpdate  VersionOperation = "update"
-	VersionOperationRestore VersionOperation = "restore"
-	MarkdownContentType                      = "text/markdown"
+	VersionOperationCreate VersionOperation = "create"
+	VersionOperationUpdate VersionOperation = "update"
+	MarkdownContentType                     = "text/markdown"
 )
 
 type Note struct {
@@ -37,7 +35,6 @@ type Note struct {
 	Status                  NoteStatus
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
-	DeletedAt               *time.Time
 }
 
 type Version struct {

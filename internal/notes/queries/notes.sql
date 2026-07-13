@@ -14,6 +14,5 @@ JOIN object_refs AS version_ref
  AND version_ref.object_type = 'version-obj'
  AND version_ref.object_id = version.id
 WHERE n.owner_id = $1
-  AND n.deleted_at IS NULL
 ORDER BY n.id DESC
 LIMIT $2 OFFSET $3;

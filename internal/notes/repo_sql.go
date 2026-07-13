@@ -26,7 +26,6 @@ func (r *SQLRepository) ListNotes(ctx context.Context, ownerID int64, query Quer
 	}
 	rows, err := executor.QueryContext(ctx, noteSelectSQL+`
 WHERE n.owner_id = $1
-  AND n.deleted_at IS NULL
   AND ($2::text = '' OR version.title ILIKE '%' || $2 || '%' OR version.content ILIKE '%' || $2 || '%')
   AND ($3::text = '' OR note_ref.tags @> ARRAY[$3]::text[])
 ORDER BY n.updated_at DESC, note_ref.ref_code DESC
@@ -69,15 +68,14 @@ RETURNING id, owner_id, created_at, updated_at`, ownerID).Scan(
 	return note, err
 }
 
-func (r *SQLRepository) FindNoteByRefCode(ctx context.Context, ownerID int64, refCode string, includeDeleted bool) (Note, error) {
+func (r *SQLRepository) FindNoteByRefCode(ctx context.Context, ownerID int64, refCode string) (Note, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return Note{}, err
 	}
 	note, err := scanNote(executor.QueryRowContext(ctx, noteSelectSQL+`
 WHERE n.owner_id = $1
-  AND note_ref.ref_code = $2
-  AND ($3::boolean OR n.deleted_at IS NULL)`, ownerID, refCode, includeDeleted))
+  AND note_ref.ref_code = $2`, ownerID, refCode))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNoteNotFound
 	}
@@ -174,16 +172,12 @@ WHERE owner_id = $1 AND id = $2`, ownerID, noteID, versionID)
 	return noteMutationResult(result, err)
 }
 
-func (r *SQLRepository) SetNoteDeleted(ctx context.Context, ownerID int64, noteID int64, deleted bool) error {
+func (r *SQLRepository) DeleteNote(ctx context.Context, ownerID int64, noteID int64) error {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return err
 	}
-	statement := `UPDATE notes SET deleted_at = NOW(), updated_at = NOW() WHERE owner_id = $1 AND id = $2 AND deleted_at IS NULL`
-	if !deleted {
-		statement = `UPDATE notes SET deleted_at = NULL, updated_at = NOW() WHERE owner_id = $1 AND id = $2 AND deleted_at IS NOT NULL`
-	}
-	result, err := executor.ExecContext(ctx, statement, ownerID, noteID)
+	result, err := executor.ExecContext(ctx, `DELETE FROM notes WHERE owner_id = $1 AND id = $2`, ownerID, noteID)
 	return noteMutationResult(result, err)
 }
 
@@ -220,7 +214,7 @@ func scanNote(row rowScanner) (Note, error) {
 		&note.CurrentVersionRef, &note.CurrentParentVersionID, &parentVersionRef,
 		&note.CurrentVersionNumber, &note.Title, &note.Markdown, &note.ContentType,
 		&note.CurrentVersionOperation, pq.Array(&note.Tags), &note.Status,
-		&note.CreatedAt, &note.UpdatedAt, &note.DeletedAt,
+		&note.CreatedAt, &note.UpdatedAt,
 	)
 	if parentVersionRef.Valid {
 		note.CurrentParentVersionRef = parentVersionRef.String
@@ -250,7 +244,7 @@ SELECT n.id, n.owner_id, n.current_version_id,
        version.parent_version_id, parent_ref.ref_code,
        version.version_number, version.title, version.content, version.content_type, version.operation,
        note_ref.tags, note_ref.status,
-       n.created_at, n.updated_at, n.deleted_at
+       n.created_at, n.updated_at
 FROM notes AS n
 JOIN object_refs AS note_ref
   ON note_ref.owner_id = n.owner_id
