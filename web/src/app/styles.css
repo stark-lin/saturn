@@ -2515,7 +2515,7 @@ td .llm-tags,
 }
 
 .audit-filter-bar {
-  max-width: 560px;
+  width: 100%;
   margin-bottom: var(--space-5);
 }
 
@@ -2555,7 +2555,6 @@ td .llm-tags,
 }
 
 .settings-choice__head,
-.settings-choice__command,
 .settings-form__actions,
 .settings-actions {
   display: flex;
@@ -2569,7 +2568,6 @@ td .llm-tags,
 
 .settings-choice__code,
 .settings-choice__meta,
-.settings-choice__command,
 .settings-detail-list dt {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -2601,15 +2599,6 @@ td .llm-tags,
   font-size: var(--text-sm);
   line-height: var(--line-normal);
   font-weight: 650;
-}
-
-.settings-choice__command {
-  justify-self: end;
-  min-height: var(--button-h);
-  padding: 0 var(--space-3);
-  border: var(--line) solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
 }
 
 .settings-account-layout {
