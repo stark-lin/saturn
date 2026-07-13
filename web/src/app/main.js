@@ -51,7 +51,12 @@ function renderLogin() {
 
 async function renderAuthenticated(user) {
   disposeAuthenticatedView();
-  const health = await getJSON("/healthz");
+  let health;
+  try {
+    health = await getJSON("/healthz");
+  } catch (_error) {
+    health = { status: "offline" };
+  }
   const availableRoutes = user.role === "superuser"
     ? routes
     : routes.filter((route) => route.view !== "settings");
@@ -77,9 +82,8 @@ async function renderAuthenticated(user) {
   shell = renderAppShell({
     routes: availableRoutes,
     activeView: activeRoute.view,
-    statusLabel: health.status === "ok" ? "Online" : "Degraded",
-    statusState: health.status === "ok" ? "online" : "warning",
-    systemCode: "S-0001",
+    statusLabel: health.status === "ok" ? "Online" : "Offline",
+    statusState: health.status === "ok" ? "online" : "offline",
     onNavigate(route) {
       if (window.location.hash === route.hash) {
         renderRoute(route);
@@ -111,7 +115,31 @@ async function renderAuthenticated(user) {
   const eventStream = connectEvents((event) => {
     document.dispatchEvent(new CustomEvent("saturn:event", { detail: event }));
   });
+  let healthCheckInProgress = false;
+  let healthPollingActive = true;
+  const healthPollID = window.setInterval(async () => {
+    if (healthCheckInProgress) {
+      return;
+    }
+
+    healthCheckInProgress = true;
+    try {
+      health = await getJSON("/healthz");
+      if (healthPollingActive) {
+        const isOnline = health.status === "ok";
+        shell.setSystemStatus(isOnline ? "Online" : "Offline", isOnline ? "online" : "offline");
+      }
+    } catch (_error) {
+      if (healthPollingActive) {
+        shell.setSystemStatus("Offline", "offline");
+      }
+    } finally {
+      healthCheckInProgress = false;
+    }
+  }, 5_000);
   disposeAuthenticatedView = () => {
+    healthPollingActive = false;
+    window.clearInterval(healthPollID);
     eventStream.abort();
     window.removeEventListener("hashchange", onHashChange);
     shell.dispose();

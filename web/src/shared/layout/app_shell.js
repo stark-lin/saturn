@@ -9,7 +9,6 @@ export function renderAppShell(options = {}) {
   const topBanner = renderTopBanner({
     statusLabel: options.statusLabel,
     statusState: options.statusState,
-    systemCode: options.systemCode,
     onSearch: options.onSearch,
   });
 
@@ -66,6 +65,9 @@ export function renderAppShell(options = {}) {
     main,
     setActiveView(nextView) {
       controlRack.setActiveView(nextView);
+    },
+    setSystemStatus(label, state) {
+      topBanner.setSystemStatus(label, state);
     },
     dispose() {
       document.removeEventListener("keydown", closeControlRackOnEscape);

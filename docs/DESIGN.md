@@ -349,6 +349,7 @@ Rules:
 * Route switching only replaces the module page content within the Scrollable Main Area.
 * Files / Notes / Accounting / Calendar / LLM / Operations pages do not repeatedly declare global fixed areas.
 * Cross-module capabilities such as global search, main module navigation, and system status are carried by the App Shell.
+* The App Shell requests `/healthz` after authentication and every 5 seconds thereafter. A response with `status = ok` displays a green `Online` indicator; request failures and all other statuses display a red `Offline` indicator.
 * The current static frontend first version uses a root-owned hash view: the browser request path remains `/`, the left Control Rack only updates hashes like `#files` / `#notes`, and switches the scrollable content area inside the root page.
 
 ## 5. Navigation Model
@@ -506,6 +507,7 @@ Content:
 First version strategy:
 
 * First implement aggregate lists, empty aggregate creation, aggregate details, event creation under aggregate, event finish, and event void operations.
+* Create Event Aggregate also supports optional synchronous ICS import: the browser can fetch an HTTP(S) ICS URL into an editable text area, or the user can paste ICS text directly; submitting non-empty ICS text uses the existing multipart import endpoint, while an empty text area keeps the normal empty aggregate flow.
 * Do not rush into complex calendar views.
 * Small monthly calendars and agenda previews can be retained in the current component reference page for visual reference.
 
