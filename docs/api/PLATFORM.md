@@ -411,7 +411,7 @@ The path ref_code allows lowercase letters during resolution, but the response r
 The endpoint only returns metadata; it does not return source business records, internal object ids, or detail URLs.
 title, tags, and status read the object_refs projection; tags are stored in object_refs.tags TEXT[].
 All objects must output tags; returns [] when tagless, and retains the first-occurrence order after server-side normalization when tags exist.
-Only the resource owner can obtain the metadata; status does not grant access permissions.
+Only the resource owner can obtain the metadata; status does not grant access permissions, and metadata with status `deleted` is treated as not found.
 Non-owner superusers cannot read metadata through this entry point either.
 ```
 
@@ -421,7 +421,7 @@ Errors:
 | --- | --- | --- |
 | `400` | `invalid_request` | `ref_code` missing or invalid format |
 | `401` | `unauthorized` | Bearer token missing, invalid, expired, or revoked |
-| `404` | `not_found` | Reference does not exist, or the current actor is not the resource owner |
+| `404` | `not_found` | Reference does not exist, has status `deleted`, or the current actor is not the resource owner |
 | `500` | `object_refs_unavailable` | Reference query service unavailable |
 
 For compatibility, the old endpoint `GET /api/platform/search?ref_code=<code>` can still be used, with consistent response and permission semantics; the internal error code for the old endpoint remains `search_unavailable`. New clients should use `/api/platform/object-refs/{ref_code}`.
@@ -497,7 +497,7 @@ Query body fields:
 Rules:
 
 ```text
-Only returns metadata where owner_id = current actor.ID; status does not grant access permissions.
+Only returns metadata where owner_id = current actor.ID; status does not grant access permissions, and metadata with status `deleted` is always excluded, including when explicitly requested through `statuses`.
 Non-owner superusers cannot read metadata through this entry point either.
 When modules and object_types both exist, their intersection is taken; if the intersection is empty, it returns HTTP 200 and [].
 Tag filtering uses all-tags semantics, meaning object_refs.tags must contain all tags in the request.
@@ -554,7 +554,7 @@ Success: `HTTP 200`
 Rules:
 
 ```text
-Only returns metadata where owner_id = current actor.ID; status does not grant access permissions.
+Only returns metadata where owner_id = current actor.ID; status does not grant access permissions, and metadata with status `deleted` is excluded before applying `limit`.
 Non-owner superusers cannot read metadata through this entry point either.
 Results are fixedly sorted by object_refs.updated_at DESC, ref_code DESC.
 Each item uses the same metadata representation as the exact ref_code query, including title, tags, and status; outputs [] when tags are empty.
