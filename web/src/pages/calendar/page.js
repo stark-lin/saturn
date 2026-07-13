@@ -145,11 +145,6 @@ function combineLocalDateTime(dateValue, timeValue) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
-function weekdayForDate(dateValue) {
-  const index = (parseDateValue(dateValue).getDay() + 6) % 7;
-  return weekdayOptions[index]?.[0] ?? "mon";
-}
-
 function renderControlLabel(text) {
   const label = el("span", "control-label");
   label.textContent = text;
@@ -192,24 +187,6 @@ function renderTextarea({ label, name, placeholder = "" }) {
   textarea.name = name;
   textarea.placeholder = placeholder;
   field.append(renderControlLabel(label), textarea);
-  return field;
-}
-
-function renderWeekdayField() {
-  const field = el("fieldset", "control-field calendar-weekday-field");
-  const legend = document.createElement("legend");
-  legend.append(renderControlLabel("Weekdays"));
-  const checks = el("div", "calendar-check-grid");
-  weekdayOptions.forEach(([value, label]) => {
-    const item = el("label", "calendar-check");
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.name = "weekday";
-    input.value = value;
-    item.append(input, document.createTextNode(label));
-    checks.append(item);
-  });
-  field.append(legend, checks);
   return field;
 }
 
@@ -508,14 +485,10 @@ export function renderCalendarPage(target) {
     renderSelect({
       label: "Recurrence",
       name: "recurrence_kind",
-      options: [["single", "Single"], ["weekly", "Weekly"]],
-      value: "single",
+      options: [["none", "None"], ["week", "Week"]],
+      value: "none",
     }),
-  );
-  const recurrenceFields = el("div", "control-split calendar-recurrence-fields");
-  recurrenceFields.append(
-    renderWeekdayField(),
-    renderField({ label: "Week Count", name: "week_count", type: "number", value: "1", min: 1 }),
+    renderField({ label: "Recurrence Count", name: "recurrence_count", type: "number", value: "1", min: 1 }),
   );
   const eventTags = renderField({ label: "Event Tags", name: "event_tags", placeholder: "workout, calendar" });
   const eventDescription = renderTextarea({ label: "Event Description", name: "event_description", placeholder: "Strength block." });
@@ -524,7 +497,6 @@ export function renderCalendarPage(target) {
     scheduleFields,
     endFields,
     recurrenceKindFields,
-    recurrenceFields,
     eventTags,
     eventDescription,
   );
@@ -898,23 +870,16 @@ export function renderCalendarPage(target) {
     eventForm.elements.starts_time.value = "09:00";
     eventForm.elements.ends_date.value = state.selectedDate;
     eventForm.elements.ends_time.value = "10:00";
-    eventForm.elements.recurrence_kind.value = "single";
-    eventForm.elements.week_count.value = "1";
-    const defaultWeekday = weekdayForDate(state.selectedDate);
-    Array.from(eventForm.elements.weekday).forEach((checkbox) => {
-      checkbox.checked = checkbox.value === defaultWeekday;
-    });
+    eventForm.elements.recurrence_kind.value = "none";
+    eventForm.elements.recurrence_count.value = "1";
     updateEventRecurrenceFields();
     setView("new-event");
     setNotice("Add Event", `Adding events under ${state.selectedAggregate.metadata?.title ?? state.selectedAggregate.ref_code}.`, "info");
   }
 
   function updateEventRecurrenceFields() {
-    const isWeekly = eventForm.elements.recurrence_kind.value === "weekly";
-    recurrenceFields.hidden = !isWeekly;
-    Array.from(recurrenceFields.querySelectorAll("input")).forEach((input) => {
-      input.disabled = !isWeekly;
-    });
+    const isWeek = eventForm.elements.recurrence_kind.value === "week";
+    eventForm.elements.recurrence_count.disabled = !isWeek;
   }
 
   async function createAggregate(event) {
@@ -960,17 +925,13 @@ export function renderCalendarPage(target) {
 
     const recurrenceKind = eventForm.elements.recurrence_kind.value;
     const recurrence = { kind: recurrenceKind };
-    if (recurrenceKind === "weekly") {
-      const weekdays = Array.from(eventForm.elements.weekday)
-        .filter((checkbox) => checkbox.checked)
-        .map((checkbox) => checkbox.value);
-      const weekCount = Number(eventForm.elements.week_count.value);
-      if (weekdays.length === 0 || !Number.isInteger(weekCount) || weekCount < 1) {
-        setNotice("Unable to Create Event", "Weekly recurrence needs at least one weekday and a positive week count.", "warning");
+    if (recurrenceKind === "week") {
+      const recurrenceCount = Number(eventForm.elements.recurrence_count.value);
+      if (!Number.isInteger(recurrenceCount) || recurrenceCount < 1) {
+        setNotice("Unable to Create Event", "Week recurrence needs a positive count.", "warning");
         return;
       }
-      recurrence.weekdays = weekdays;
-      recurrence.week_count = weekCount;
+      recurrence.count = recurrenceCount;
     }
 
     setFormBusy(eventForm, true);

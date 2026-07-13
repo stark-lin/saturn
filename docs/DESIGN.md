@@ -501,7 +501,7 @@ Content:
 * EventAggregate
 * Event
 * Main Calendar view
-* Single / weekly expansion upon Event creation
+* None / week recurrence expansion by count upon Event creation
 
 First version strategy:
 
@@ -517,7 +517,7 @@ Key components:
 * Date Picker
 * Time Picker
 * End Date / Time Input
-* Weekly Repeat Builder
+* Recurrence Kind / Count Controls
 * Schedule / Agenda List
 
 ### 6.6 LLM

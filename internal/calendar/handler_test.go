@@ -56,7 +56,7 @@ func TestHandlerCreatesEventUnderAggregateWithEndTimeAndTags(t *testing.T) {
 	}}
 	handler := NewHandler(service)
 	request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/CAL-00000001/events",
-		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"single"}}`)
+		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","count":3}}`)
 	request.SetPathValue("ref_code", "CAL-00000001")
 	response := httptest.NewRecorder()
 
@@ -66,6 +66,7 @@ func TestHandlerCreatesEventUnderAggregateWithEndTimeAndTags(t *testing.T) {
 		t.Fatalf("create response = %d location %q", response.Code, response.Header().Get("Location"))
 	}
 	if service.createEventAggregateRef != "CAL-00000001" || !service.createEventInput.EndsAt.Equal(endsAt) ||
+		service.createEventInput.Recurrence.Kind != RecurrenceKindWeek || service.createEventInput.Recurrence.Count != 3 ||
 		len(service.createEventInput.Tags) != 1 || service.createEventInput.Tags[0] != "meeting" {
 		t.Fatalf("create event input = %q %#v", service.createEventAggregateRef, service.createEventInput)
 	}
@@ -90,11 +91,19 @@ func TestHandlerRejectsMissingEndTimeAndLegacyDuration(t *testing.T) {
 	}{
 		{
 			name: "missing end time",
-			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","recurrence":{"kind":"single"}}`,
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","recurrence":{"kind":"none"}}`,
 		},
 		{
 			name: "legacy duration field",
-			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"single"}}`,
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"none"}}`,
+		},
+		{
+			name: "legacy weekdays field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","weekdays":["mon"],"count":2}}`,
+		},
+		{
+			name: "legacy week count field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","week_count":2}}`,
 		},
 	}
 	for _, tt := range tests {

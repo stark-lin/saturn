@@ -103,9 +103,8 @@ POST /api/calendar/aggregates/CAL-00000001/events
   "starts_at": "2026-06-01T09:00:00Z",
   "ends_at": "2026-06-01T10:00:00Z",
   "recurrence": {
-    "kind": "weekly",
-    "weekdays": ["mon", "wed"],
-    "week_count": 2
+    "kind": "week",
+    "count": 2
   }
 }
 ```
@@ -130,17 +129,15 @@ Event creation field rules:
 | `tags` | No | Trimmed, empty values removed, and deduplicated before associating with each generated Event |
 | `starts_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time |
 | `ends_at` | Yes | RFC3339 timestamp; the handler also accepts `YYYY-MM-DD` as midnight time; must be later than `starts_at` |
-| `recurrence.kind` | No | `single` or `weekly`; defaults to `single` |
-| `recurrence.weekdays` | Weekly only | `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`, allows multiple selections, duplicates will be removed |
-| `recurrence.week_count` | Weekly only | Positive integer weeks; the current service layer limits the max to 520 |
+| `recurrence.kind` | No | `none` or `week`; defaults to `none` |
+| `recurrence.count` | Week only | Total number of generated Events including the first Event; integer range `1..520`; for `none`, omit it or use `1` |
 
 Recurrence rules:
 
 ```text
-single: Only generates 1 Event with the start time being starts_at.
-weekly: Using Monday of the week containing starts_at as the starting point, expands according to weekdays over week_count weeks.
-The first week of weekly recurrence will not generate events earlier than starts_at.
-Each weekly instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
+none: Generates exactly 1 Event starting at starts_at.
+week: Generates recurrence.count Events on the same weekday and clock time as starts_at, with each Event starting 7 days after the previous one. Count includes the first Event.
+Each week instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
 Duplicate events are allowed; there is no uniqueness constraint on the same owner, same start time, and same title.
 ```
 
@@ -285,7 +282,7 @@ HTTP 404
 
 | Status | Code | Condition |
 | --- | --- | --- |
-| `400` | `invalid_request` | Invalid creation request JSON/unknown fields, query, `ref_code`, timestamps or timestamp order, weekday, or enumerated values |
+| `400` | `invalid_request` | Invalid creation request JSON/unknown fields, query, `ref_code`, timestamps or timestamp order, recurrence kind/count, or enumerated values |
 | `401` | `unauthorized` | Unauthenticated or missing authenticated Principal |
 | `404` | `not_found` | EventAggregate / Event does not exist, or the current actor has no access rights |
 | `409` | `conflict` | Finishing an Event that is already `finished` / `voided`, or voiding an Event that is already `voided` |

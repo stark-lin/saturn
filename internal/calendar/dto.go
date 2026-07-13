@@ -30,9 +30,8 @@ type EventMetadataRequest struct {
 }
 
 type RecurrenceRequest struct {
-	Kind      RecurrenceKind `json:"kind"`
-	Weekdays  []Weekday      `json:"weekdays"`
-	WeekCount int            `json:"week_count"`
+	Kind  RecurrenceKind `json:"kind"`
+	Count int            `json:"count"`
 }
 
 type EventAggregateMetadataDetail struct {
@@ -181,7 +180,7 @@ func (r CreateEventRequest) input(startsAt time.Time, endsAt time.Time) CreateEv
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
 		Recurrence: RecurrenceInput{
-			Kind: r.Recurrence.Kind, Weekdays: r.Recurrence.Weekdays, WeekCount: r.Recurrence.WeekCount,
+			Kind: r.Recurrence.Kind, Count: r.Recurrence.Count,
 		},
 	}
 }

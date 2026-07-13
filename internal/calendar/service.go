@@ -19,7 +19,7 @@ var (
 	ErrInvalidQuery          = errors.New("invalid calendar query")
 )
 
-const maxRecurrenceWeekCount = 520
+const maxRecurrenceCount = 520
 
 type ObjectReferenceService interface {
 	ClaimCode(ctx context.Context, objectType ref.ObjectType) (string, error)
@@ -357,23 +357,20 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 	input.Metadata = normalizeEventMetadata(input.Metadata)
 	input.Tags = normalizedTags(input.Tags)
 	if input.Recurrence.Kind == "" {
-		input.Recurrence.Kind = RecurrenceKindSingle
+		input.Recurrence.Kind = RecurrenceKindNone
 	}
-	weekdays, validWeekdays := normalizedWeekdays(input.Recurrence.Weekdays)
-	if !validWeekdays {
-		return CreateEventInput{}, ErrInvalidEvent
-	}
-	input.Recurrence.Weekdays = weekdays
 
 	if input.Metadata.Title == "" || input.StartsAt.IsZero() || input.EndsAt.IsZero() || !input.EndsAt.After(input.StartsAt) {
 		return CreateEventInput{}, ErrInvalidEvent
 	}
 	switch input.Recurrence.Kind {
-	case RecurrenceKindSingle:
-		input.Recurrence.Weekdays = nil
-		input.Recurrence.WeekCount = 0
-	case RecurrenceKindWeekly:
-		if input.Recurrence.WeekCount < 1 || input.Recurrence.WeekCount > maxRecurrenceWeekCount || len(input.Recurrence.Weekdays) == 0 {
+	case RecurrenceKindNone:
+		if input.Recurrence.Count < 0 || input.Recurrence.Count > 1 {
+			return CreateEventInput{}, ErrInvalidEvent
+		}
+		input.Recurrence.Count = 1
+	case RecurrenceKindWeek:
+		if input.Recurrence.Count < 1 || input.Recurrence.Count > maxRecurrenceCount {
 			return CreateEventInput{}, ErrInvalidEvent
 		}
 	default:
@@ -384,26 +381,17 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 
 func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 	switch input.Recurrence.Kind {
-	case RecurrenceKindSingle:
+	case RecurrenceKindNone:
 		return []CreateEventInput{eventInputAt(input, input.StartsAt)}, nil
-	case RecurrenceKindWeekly:
-		events := make([]CreateEventInput, 0, len(input.Recurrence.Weekdays)*input.Recurrence.WeekCount)
-		weekStart := startOfWeek(input.StartsAt)
-		for week := 0; week < input.Recurrence.WeekCount; week++ {
-			for _, weekday := range input.Recurrence.Weekdays {
-				startsAt := atWeekdayTime(weekStart, week, weekday, input.StartsAt)
-				if startsAt.Before(input.StartsAt) {
-					continue
-				}
-				eventInput := eventInputAt(input, startsAt)
-				if !eventInput.EndsAt.After(eventInput.StartsAt) {
-					return nil, ErrInvalidEvent
-				}
-				events = append(events, eventInput)
+	case RecurrenceKindWeek:
+		events := make([]CreateEventInput, 0, input.Recurrence.Count)
+		for occurrence := 0; occurrence < input.Recurrence.Count; occurrence++ {
+			startsAt := input.StartsAt.AddDate(0, 0, occurrence*7)
+			eventInput := eventInputAt(input, startsAt)
+			if !eventInput.EndsAt.After(eventInput.StartsAt) {
+				return nil, ErrInvalidEvent
 			}
-		}
-		if len(events) == 0 {
-			return nil, ErrInvalidEvent
+			events = append(events, eventInput)
 		}
 		return events, nil
 	default:
@@ -438,21 +426,6 @@ func calendarDayOffset(startsAt time.Time, endsAt time.Time) int {
 	return int(endDate.Sub(startDate) / (24 * time.Hour))
 }
 
-func startOfWeek(t time.Time) time.Time {
-	date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-	offset := (int(date.Weekday()) + 6) % 7
-	return date.AddDate(0, 0, -offset)
-}
-
-func atWeekdayTime(weekStart time.Time, week int, weekday Weekday, template time.Time) time.Time {
-	dayOffset := map[Weekday]int{
-		WeekdayMonday: 0, WeekdayTuesday: 1, WeekdayWednesday: 2, WeekdayThursday: 3,
-		WeekdayFriday: 4, WeekdaySaturday: 5, WeekdaySunday: 6,
-	}[weekday]
-	date := weekStart.AddDate(0, 0, week*7+dayOffset)
-	return time.Date(date.Year(), date.Month(), date.Day(), template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location())
-}
-
 func normalizeEventAggregateMetadata(metadata EventAggregateMetadata) EventAggregateMetadata {
 	return EventAggregateMetadata{
 		Title: strings.TrimSpace(metadata.Title), Description: strings.TrimSpace(metadata.Description),
@@ -464,37 +437,6 @@ func normalizeEventMetadata(metadata EventMetadata) EventMetadata {
 	return EventMetadata{
 		Title: strings.TrimSpace(metadata.Title), Description: strings.TrimSpace(metadata.Description),
 		Location: strings.TrimSpace(metadata.Location),
-	}
-}
-
-func normalizedWeekdays(days []Weekday) ([]Weekday, bool) {
-	seen := make(map[Weekday]struct{})
-	for _, day := range days {
-		day = Weekday(strings.ToLower(strings.TrimSpace(string(day))))
-		if !validWeekday(day) {
-			return nil, false
-		}
-		seen[day] = struct{}{}
-	}
-	weekOrder := []Weekday{
-		WeekdayMonday, WeekdayTuesday, WeekdayWednesday, WeekdayThursday,
-		WeekdayFriday, WeekdaySaturday, WeekdaySunday,
-	}
-	normalized := make([]Weekday, 0, len(seen))
-	for _, day := range weekOrder {
-		if _, exists := seen[day]; exists {
-			normalized = append(normalized, day)
-		}
-	}
-	return normalized, true
-}
-
-func validWeekday(day Weekday) bool {
-	switch day {
-	case WeekdayMonday, WeekdayTuesday, WeekdayWednesday, WeekdayThursday, WeekdayFriday, WeekdaySaturday, WeekdaySunday:
-		return true
-	default:
-		return false
 	}
 }
 

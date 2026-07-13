@@ -64,11 +64,10 @@ func TestServiceCreatesEventUnderAggregateWithRefsEndTimeAndTags(t *testing.T) {
 	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 
 	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
-		Metadata:   EventMetadata{Title: "Planning"},
-		Tags:       []string{" meeting ", "meeting"},
-		StartsAt:   startsAt,
-		EndsAt:     endsAt,
-		Recurrence: RecurrenceInput{Kind: RecurrenceKindSingle},
+		Metadata: EventMetadata{Title: "Planning"},
+		Tags:     []string{" meeting ", "meeting"},
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
 	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
@@ -96,7 +95,7 @@ func TestServiceCreatesEventUnderAggregateWithRefsEndTimeAndTags(t *testing.T) {
 	}
 }
 
-func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
+func TestServiceExpandsWeekRecurrenceByCount(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.June, 1, 10, 0, 0, 0, time.UTC)
@@ -113,33 +112,32 @@ func TestServiceExpandsWeeklyEventsByWeekdayAndWeekCount(t *testing.T) {
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
 		Recurrence: RecurrenceInput{
-			Kind:      RecurrenceKindWeekly,
-			Weekdays:  []Weekday{WeekdayWednesday, WeekdayMonday, WeekdayMonday},
-			WeekCount: 2,
+			Kind:  RecurrenceKindWeek,
+			Count: 3,
 		},
 	})
 	if err != nil {
-		t.Fatalf("create weekly aggregate: %v", err)
+		t.Fatalf("create week recurrence: %v", err)
 	}
-	if len(detail.Events) != 4 {
-		t.Fatalf("weekly event count = %d, want 4: %#v", len(detail.Events), detail.Events)
+	if len(detail.Events) != 3 {
+		t.Fatalf("week recurrence event count = %d, want 3: %#v", len(detail.Events), detail.Events)
 	}
 	got := make([]string, 0, len(detail.Events))
 	for _, event := range detail.Events {
 		got = append(got, event.StartsAt.Format(time.DateOnly))
 		if event.EndsAt.Hour() != 10 || event.EndsAt.Minute() != 0 || event.EndsAt.Format(time.DateOnly) != event.StartsAt.Format(time.DateOnly) {
-			t.Fatalf("weekly event time range = %s to %s, want same-day 09:00 to 10:00", event.StartsAt, event.EndsAt)
+			t.Fatalf("week recurrence time range = %s to %s, want same-day 09:00 to 10:00", event.StartsAt, event.EndsAt)
 		}
 	}
-	want := []string{"2026-06-01", "2026-06-03", "2026-06-08", "2026-06-10"}
+	want := []string{"2026-06-01", "2026-06-08", "2026-06-15"}
 	for index := range want {
 		if got[index] != want[index] {
-			t.Fatalf("weekly dates = %#v, want %#v", got, want)
+			t.Fatalf("week recurrence dates = %#v, want %#v", got, want)
 		}
 	}
 }
 
-func TestServiceExpandsWeeklyEventsWithTemplateEndClockAndDayOffset(t *testing.T) {
+func TestServiceExpandsWeekRecurrenceWithTemplateEndClockAndDayOffset(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.June, 1, 23, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.June, 2, 1, 30, 0, 0, time.UTC)
@@ -156,20 +154,19 @@ func TestServiceExpandsWeeklyEventsWithTemplateEndClockAndDayOffset(t *testing.T
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
 		Recurrence: RecurrenceInput{
-			Kind:      RecurrenceKindWeekly,
-			Weekdays:  []Weekday{WeekdayMonday, WeekdayWednesday},
-			WeekCount: 1,
+			Kind:  RecurrenceKindWeek,
+			Count: 2,
 		},
 	})
 	if err != nil {
-		t.Fatalf("create weekly events: %v", err)
+		t.Fatalf("create week recurrence events: %v", err)
 	}
 	if len(detail.Events) != 2 {
-		t.Fatalf("weekly event count = %d, want 2", len(detail.Events))
+		t.Fatalf("week recurrence event count = %d, want 2", len(detail.Events))
 	}
 	wantEnds := []time.Time{
 		time.Date(2026, time.June, 2, 1, 30, 0, 0, time.UTC),
-		time.Date(2026, time.June, 4, 1, 30, 0, 0, time.UTC),
+		time.Date(2026, time.June, 9, 1, 30, 0, 0, time.UTC),
 	}
 	for index, event := range detail.Events {
 		if !event.EndsAt.Equal(wantEnds[index]) {
@@ -353,26 +350,38 @@ func TestServiceDeletesEventAggregateAndAllEventReferences(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsInvalidWeeklyInputBeforeWriting(t *testing.T) {
-	service, repo, _, _ := newTestService()
-	aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Bad recurrence"}}
-	repo.storeAggregate(aggregate)
-	startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
-	_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
-		Metadata: EventMetadata{Title: "Bad event"},
-		StartsAt: startsAt,
-		EndsAt:   startsAt.Add(30 * time.Minute),
-		Recurrence: RecurrenceInput{
-			Kind:      RecurrenceKindWeekly,
-			Weekdays:  []Weekday{"funday"},
-			WeekCount: 1,
-		},
-	})
-	if !errors.Is(err, ErrInvalidEvent) {
-		t.Fatalf("invalid weekly input error = %v", err)
+func TestServiceRejectsInvalidRecurrenceBeforeWriting(t *testing.T) {
+	tests := []struct {
+		name       string
+		recurrence RecurrenceInput
+	}{
+		{name: "unsupported kind", recurrence: RecurrenceInput{Kind: "day", Count: 2}},
+		{name: "legacy single kind", recurrence: RecurrenceInput{Kind: "single"}},
+		{name: "legacy weekly kind", recurrence: RecurrenceInput{Kind: "weekly", Count: 2}},
+		{name: "week count missing", recurrence: RecurrenceInput{Kind: RecurrenceKindWeek}},
+		{name: "week count too large", recurrence: RecurrenceInput{Kind: RecurrenceKindWeek, Count: maxRecurrenceCount + 1}},
+		{name: "none count negative", recurrence: RecurrenceInput{Kind: RecurrenceKindNone, Count: -1}},
+		{name: "none count greater than one", recurrence: RecurrenceInput{Kind: RecurrenceKindNone, Count: 2}},
 	}
-	if len(repo.aggregates) != 1 || len(repo.events) != 0 {
-		t.Fatalf("invalid input wrote repository state: %#v %#v", repo.aggregates, repo.events)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, repo, _, _ := newTestService()
+			aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Bad recurrence"}}
+			repo.storeAggregate(aggregate)
+			startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
+			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
+				Metadata:   EventMetadata{Title: "Bad event"},
+				StartsAt:   startsAt,
+				EndsAt:     startsAt.Add(30 * time.Minute),
+				Recurrence: tt.recurrence,
+			})
+			if !errors.Is(err, ErrInvalidEvent) {
+				t.Fatalf("invalid recurrence error = %v", err)
+			}
+			if len(repo.aggregates) != 1 || len(repo.events) != 0 {
+				t.Fatalf("invalid input wrote repository state: %#v %#v", repo.aggregates, repo.events)
+			}
+		})
 	}
 }
 
