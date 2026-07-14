@@ -55,9 +55,9 @@ shared: exists explicit share row where the owning module defines sharing
 Notes owner-only exception:
 
 ```text
-The current Notes API only allows the actor to create their own Notes, and read, modify, or delete Notes they own.
-The Notes API does not apply shared scopes and does not allow superusers to access Notes of other owners via the Notes API.
-The current Notes API returns `status = "draft"`, but does not provide capabilities for status modification, sharing, or version reading.
+The current Notes API only allows the actor to create, read, modify, or permanently delete logical Notes they own.
+The same owner-only rule applies to immutable version listing and independent version reads; the Notes API does not apply shared scopes and does not allow superusers to access another owner's Notes or versions.
+Logical Notes use `status = "draft"`; version objects use `status = "immutable"`. Status never grants access. Hard deletion removes the logical and version ObjectRefs, and no restore path exists.
 When a resource does not exist or does not belong to the current owner, it uniformly returns HTTP 404 / code "not_found".
 ```
 

@@ -28,6 +28,7 @@ func TestBusinessReferenceResolverResolvesSupportedObjectPayloads(t *testing.T) 
 		{name: "account", objectType: ref.ObjectTypeAccount, refCode: "ACC-00000001", wantModule: "accounting", wantTags: []string{"cash"}},
 		{name: "transaction", objectType: ref.ObjectTypeTransaction, refCode: "TRN-00000001", wantModule: "accounting", wantTags: []string{"tax"}},
 		{name: "note", objectType: ref.ObjectTypeNote, refCode: "NTE-00000001", wantModule: "notes", wantTags: []string{"draft"}},
+		{name: "note version", objectType: ref.ObjectTypeNoteVersion, refCode: "NTE-00000002", wantModule: "notes", wantTags: []string{"draft"}},
 		{name: "file collection", objectType: ref.ObjectTypeFileCollection, refCode: "FCL-00000001", wantModule: "files", wantTags: []string{"docs"}},
 		{name: "file", objectType: ref.ObjectTypeFile, refCode: "FIL-00000001", wantModule: "files", wantTags: []string{"receipt"}},
 		{name: "event aggregate", objectType: ref.ObjectTypeEventAggregate, refCode: "EAG-00000001", wantModule: "calendar", wantTags: []string{"work"}},
@@ -62,6 +63,13 @@ func TestBusinessReferenceResolverResolvesSupportedObjectPayloads(t *testing.T) 
 				if !ok || len(events) != 1 {
 					t.Fatalf("aggregate payload = %#v", payload)
 				}
+				event, ok := events[0].(map[string]any)
+				if !ok || event["ends_at"] == nil || event["duration_minutes"] != nil {
+					t.Fatalf("aggregate event payload = %#v", events[0])
+				}
+			}
+			if tt.objectType == ref.ObjectTypeEvent && (payload["ends_at"] == nil || payload["duration_minutes"] != nil) {
+				t.Fatalf("event payload = %#v", payload)
 			}
 		})
 	}
@@ -119,6 +127,10 @@ func newReferenceResolverFixture(now time.Time, object ref.ObjectRef) *BusinessR
 		&fakeNotesReader{note: notes.Note{
 			RefCode: object.RefCode, Title: "Note", Markdown: "Body", Status: notes.NoteDraft,
 			Tags: []string{"draft"}, CreatedAt: now, UpdatedAt: now,
+		}, version: notes.Version{
+			RefCode: object.RefCode, NoteRefCode: "NTE-00000001", VersionNumber: 1,
+			Title: "Note", Content: "Body", ContentType: notes.MarkdownContentType,
+			Operation: notes.VersionOperationCreate, Tags: []string{"draft"}, CreatedAt: now,
 		}},
 		&fakeFilesReader{
 			collection: files.Collection{
@@ -139,13 +151,13 @@ func newReferenceResolverFixture(now time.Time, object ref.ObjectRef) *BusinessR
 				},
 				Events: []calendar.Event{{
 					RefCode: "EVT-00000001", AggregateRefCode: object.RefCode, StartsAt: now,
-					DurationMinutes: 30, Metadata: calendar.EventMetadata{Title: "Planning"},
+					EndsAt: now.Add(30 * time.Minute), Metadata: calendar.EventMetadata{Title: "Planning"},
 					Status: calendar.EventStatusScheduled, Tags: []string{"meeting"}, CreatedAt: now, UpdatedAt: now,
 				}},
 			},
 			event: calendar.Event{
 				RefCode: object.RefCode, AggregateRefCode: "EAG-00000001", StartsAt: now,
-				DurationMinutes: 30, Metadata: calendar.EventMetadata{Title: "Planning"},
+				EndsAt: now.Add(30 * time.Minute), Metadata: calendar.EventMetadata{Title: "Planning"},
 				Status: calendar.EventStatusScheduled, Tags: []string{"meeting"}, CreatedAt: now, UpdatedAt: now,
 			},
 		},
@@ -176,12 +188,17 @@ func (r *fakeAccountingReader) GetTransaction(_ context.Context, _ auth.Principa
 }
 
 type fakeNotesReader struct {
-	note notes.Note
-	err  error
+	note    notes.Note
+	version notes.Version
+	err     error
 }
 
 func (r *fakeNotesReader) GetNote(_ context.Context, _ auth.Principal, _ string) (notes.Note, error) {
 	return r.note, r.err
+}
+
+func (r *fakeNotesReader) GetVersion(_ context.Context, _ auth.Principal, _ string) (notes.Version, error) {
+	return r.version, r.err
 }
 
 type fakeFilesReader struct {

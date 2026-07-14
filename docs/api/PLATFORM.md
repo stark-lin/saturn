@@ -393,7 +393,7 @@ Success: `HTTP 200`
 {
   "ref_code": "NTE-00000001",
   "module": "notes",
-  "object_type": "note",
+  "object_type": "nte-obj",
   "title": "Release notes",
   "tags": ["backend", "release"],
   "status": "draft",
@@ -406,6 +406,7 @@ Rules:
 
 ```text
 Supports the three-letter module prefixes NTE / FIL / ACC / CAL / LLM and the eight-character uppercase Hex sequence number.
+The prefix identifies module membership only; for example, both `nte-obj` and `version-obj` use NTE, and `object_type` distinguishes them.
 The path ref_code allows lowercase letters during resolution, but the response returns the normalized code.
 The endpoint only returns metadata; it does not return source business records, internal object ids, or detail URLs.
 title, tags, and status read the object_refs projection; tags are stored in object_refs.tags TEXT[].
@@ -441,7 +442,7 @@ Request:
 ```json
 {
   "modules": ["notes", "files"],
-  "object_types": ["note", "file"],
+  "object_types": ["nte-obj", "version-obj", "file"],
   "statuses": ["draft", "active"],
   "tags": ["backend", "release"],
   "created_at": {
@@ -467,7 +468,7 @@ Success: `HTTP 200`
   {
     "ref_code": "NTE-00000001",
     "module": "notes",
-    "object_type": "note",
+    "object_type": "nte-obj",
     "title": "Release notes",
     "tags": ["backend", "release"],
     "status": "draft",
@@ -482,7 +483,7 @@ Query body fields:
 | Field | Type | Default | Rule |
 | --- | --- | --- | --- |
 | `modules` | string array | empty | `notes/files/accounting/calendar/llm`; translates to `object_type in (...)` |
-| `object_types` | string array | empty | `note/file_collection/file/event_aggregate/event/account/transaction/llm_session/llm_request` |
+| `object_types` | string array | empty | `nte-obj/version-obj/file_collection/file/event_aggregate/event/account/transaction/llm_session/llm_request` |
 | `statuses` | string array | empty | exact `object_refs.status in (...)` |
 | `tags` | string array | empty | object must contain all requested tags |
 | `created_at.from` | RFC3339 string | empty | inclusive lower bound on `object_refs.created_at` |
@@ -538,7 +539,7 @@ Success: `HTTP 200`
     {
       "ref_code": "NTE-00000012",
       "module": "notes",
-      "object_type": "note",
+      "object_type": "nte-obj",
       "title": "Go Project Layout",
       "tags": ["go", "reference"],
       "status": "draft",

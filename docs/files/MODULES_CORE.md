@@ -216,7 +216,10 @@ internal/notes
 Responsibilities:
 
 ```text
-Note
+nte-obj stable logical Note and current-version pointer
+version-obj immutable complete Note snapshots
+Version listing and independent reads
+Transactional hard deletion of the logical Note, all versions, and all ObjectRefs
 Tag association through platform capability
 Collection
 NoteLink
@@ -224,7 +227,6 @@ NoteTemplate
 NoteSource
 RSS
 Markdown processing
-Note revisions
 Search contributor
 ```
 
@@ -234,6 +236,9 @@ Rules:
 Collection solely belongs to the Notes module
 Tag uses ObjectRef tags projection, Notes does not maintain an independent tag table
 NoteSource is an abstraction for external content sources, RSS is a first-class source
+nte-obj and version-obj share the NTE module RefCode namespace; object_refs.object_type distinguishes them
+Content updates create new version objects; existing versions are never modified
+Content restoration is not exposed; deleting a logical Note permanently removes all its versions
 ```
 
 Prohibited:
@@ -322,6 +327,8 @@ internal/calendar
 ├── handler.go
 ├── handler_api.go
 ├── handler_test.go
+├── ics_import.go
+├── ics_import_test.go
 ├── import_export_contributor.go
 ├── model.go
 ├── module.go
@@ -341,7 +348,8 @@ EventAggregate root
 EventAggregate empty creation
 Event specific schedule instance, must be created under aggregate
 Calendar view main view
-Single / weekly expansion upon Event creation
+None / week / month / year recurrence expansion by count upon Event creation
+Synchronous ICS parsing and bounded RFC recurrence-set expansion into at most 512 concrete Events
 Event finish / void state transition
 ObjectRef / Tag / Audit in-transaction synchronization
 Search contributor

@@ -93,6 +93,24 @@ func TestHandlerUpdateReturnsCurrentNote(t *testing.T) {
 	}
 }
 
+func TestHandlerVersionRouteExposesIndependentVersion(t *testing.T) {
+	service := &fakeNoteService{
+		version: Version{
+			RefCode: "NTE-00000002", NoteRefCode: "NTE-00000001", VersionNumber: 1,
+			Title: "Old", Content: "Old\n\nBody", ContentType: MarkdownContentType, Operation: VersionOperationCreate,
+		},
+	}
+	handler := NewHandler(service)
+
+	getRequest := authenticatedRequest(http.MethodGet, "/api/notes/versions/by-ref/NTE-00000002", "")
+	getRequest.SetPathValue("ref_code", "NTE-00000002")
+	getResponse := httptest.NewRecorder()
+	handler.GetVersion(getResponse, getRequest)
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf("get version status = %d", getResponse.Code)
+	}
+}
+
 func TestHandlerDeleteReturnsNoContentAndRejectsInvalidRef(t *testing.T) {
 	service := &fakeNoteService{}
 	handler := NewHandler(service)
@@ -117,6 +135,7 @@ func TestHandlerDeleteReturnsNoContentAndRejectsInvalidRef(t *testing.T) {
 
 type fakeNoteService struct {
 	note           Note
+	version        Version
 	updateRefCode  string
 	updateMarkdown string
 	deleteRefCode  string
@@ -133,6 +152,14 @@ func (s *fakeNoteService) CreateNote(_ context.Context, _ auth.Principal, _ stri
 
 func (s *fakeNoteService) GetNote(_ context.Context, _ auth.Principal, _ string) (Note, error) {
 	return s.note, s.err
+}
+
+func (s *fakeNoteService) GetVersion(_ context.Context, _ auth.Principal, _ string) (Version, error) {
+	return s.version, s.err
+}
+
+func (s *fakeNoteService) ListVersions(_ context.Context, _ auth.Principal, _ string) ([]Version, error) {
+	return []Version{s.version}, s.err
 }
 
 func (s *fakeNoteService) UpdateNote(_ context.Context, _ auth.Principal, refCode string, markdown string) (Note, error) {

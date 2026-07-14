@@ -1,5 +1,5 @@
 // This file renders the authenticated Calendar event aggregate workflow.
-import { deleteJSON, getJSON, postJSON } from "../../shared/api/client.js";
+import { deleteJSON, getJSON, postFormData, postJSON } from "../../shared/api/client.js";
 import {
   renderButton,
   renderMeter,
@@ -13,6 +13,7 @@ import { el } from "../../shared/utils/dom.js";
 const aggregatePageSize = 10;
 const eventPageSize = 10;
 const collectionPageSize = 100;
+const maximumICSFileBytes = 1024 * 1024;
 const weekdayOptions = [
   ["mon", "Mon"],
   ["tue", "Tue"],
@@ -126,15 +127,16 @@ function formatEventDate(event) {
 }
 
 function eventEnd(event) {
-  return new Date(new Date(event.starts_at).getTime() + Number(event.duration_minutes ?? 0) * 60 * 1000);
+  return new Date(event.ends_at);
 }
 
 function eventTimeRange(event) {
   const start = new Date(event.starts_at);
-  if (Number.isNaN(start.getTime())) {
+  const end = eventEnd(event);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return "--";
   }
-  return `${formatLocalTime(start)}-${formatLocalTime(eventEnd(event))}`;
+  return `${formatLocalTime(start)}-${formatLocalTime(end)}`;
 }
 
 function combineLocalDateTime(dateValue, timeValue) {
@@ -142,11 +144,6 @@ function combineLocalDateTime(dateValue, timeValue) {
   const [hour, minute] = String(timeValue ?? "").split(":").map(Number);
   const date = new Date(year, month - 1, day, hour, minute, 0, 0);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function weekdayForDate(dateValue) {
-  const index = (parseDateValue(dateValue).getDay() + 6) % 7;
-  return weekdayOptions[index]?.[0] ?? "mon";
 }
 
 function renderControlLabel(text) {
@@ -185,30 +182,15 @@ function renderSelect({ label, name, options, value }) {
   return field;
 }
 
-function renderTextarea({ label, name, placeholder = "" }) {
+function renderTextarea({ label, name, placeholder = "", rows = 0 }) {
   const field = el("label", "control-field");
   const textarea = el("textarea", "textarea");
   textarea.name = name;
   textarea.placeholder = placeholder;
+  if (rows > 0) {
+    textarea.rows = rows;
+  }
   field.append(renderControlLabel(label), textarea);
-  return field;
-}
-
-function renderWeekdayField() {
-  const field = el("fieldset", "control-field calendar-weekday-field");
-  const legend = document.createElement("legend");
-  legend.append(renderControlLabel("Weekdays"));
-  const checks = el("div", "calendar-check-grid");
-  weekdayOptions.forEach(([value, label]) => {
-    const item = el("label", "calendar-check");
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.name = "weekday";
-    input.value = value;
-    item.append(input, document.createTextNode(label));
-    checks.append(item);
-  });
-  field.append(legend, checks);
   return field;
 }
 
@@ -438,7 +420,6 @@ export function renderCalendarPage(target) {
     { label: "Title" },
     { label: "Status" },
     { label: "Tags" },
-    { label: "Note" },
   ]);
   const eventFooter = el("footer", "accounting-footer");
   const eventPagerSlot = el("div", "accounting-pager-slot");
@@ -453,7 +434,7 @@ export function renderCalendarPage(target) {
   const aggregateFormHeader = el("header", "accounting-form__head");
   appendText(aggregateFormHeader, "span", "eyebrow", "Calendar / New");
   appendText(aggregateFormHeader, "h2", "accounting-form__title", "Create Event Aggregate");
-  appendText(aggregateFormHeader, "p", "accounting-form__text", "Create immutable aggregate metadata. Events are added from the aggregate detail view.");
+  appendText(aggregateFormHeader, "p", "accounting-form__text", "Create immutable aggregate metadata, or optionally import events from ICS.");
   const aggregateFields = el("div", "control-stack accounting-form__fields");
   const aggregateBasics = el("div", "control-split");
   aggregateBasics.append(
@@ -466,10 +447,40 @@ export function renderCalendarPage(target) {
     renderField({ label: "Aggregate Location", name: "aggregate_location", placeholder: "Gym" }),
   );
   const aggregateDescription = renderTextarea({ label: "Aggregate Description", name: "aggregate_description", placeholder: "Weekly training block." });
+  const aggregateICSImport = el("section", "control-stack calendar-ics-import");
+  aggregateICSImport.setAttribute("aria-labelledby", "calendar-ics-import-title");
+  const aggregateICSImportTitle = appendText(aggregateICSImport, "h3", "calendar-ics-import__title", "Import from ICS (optional)");
+  aggregateICSImportTitle.id = "calendar-ics-import-title";
+  appendText(
+    aggregateICSImport,
+    "p",
+    "accounting-form__text calendar-ics-import__text",
+    "Paste ICS text below or download it directly in your browser. When ICS text is present, IMPORT uses Aggregate Title and ignores the other aggregate metadata fields.",
+  );
+  const aggregateICSURLRow = el("div", "control-split calendar-ics-import__url-row");
+  const aggregateICSURLField = renderField({
+    label: "ICS URL",
+    name: "ics_url",
+    type: "url",
+    placeholder: "https://example.com/calendar.ics",
+  });
+  const downloadICSButton = renderButton("DOWNLOAD", {
+    className: "calendar-ics-import__download",
+    label: "Download ICS text from URL",
+  });
+  aggregateICSURLRow.append(aggregateICSURLField, downloadICSButton);
+  const aggregateICSText = renderTextarea({
+    label: "ICS Text",
+    name: "ics_text",
+    placeholder: "BEGIN:VCALENDAR\nVERSION:2.0\n...\nEND:VCALENDAR",
+    rows: 10,
+  });
+  aggregateICSImport.append(aggregateICSURLRow, aggregateICSText);
   aggregateFields.append(
     aggregateBasics,
     aggregateDetails,
     aggregateDescription,
+    aggregateICSImport,
   );
   const aggregateFormActions = el("footer", "accounting-form__actions");
   const cancelAggregateButton = renderButton("RETURN");
@@ -497,28 +508,28 @@ export function renderCalendarPage(target) {
     renderField({ label: "Starts Date", name: "starts_date", type: "date", value: state.selectedDate, required: true }),
     renderField({ label: "Starts Time", name: "starts_time", type: "time", value: "09:00", required: true }),
   );
-  const durationRecurrenceFields = el("div", "control-split");
-  durationRecurrenceFields.append(
-    renderField({ label: "Duration Minutes", name: "duration_minutes", type: "number", value: "60", required: true, min: 1 }),
+  const endFields = el("div", "control-split");
+  endFields.append(
+    renderField({ label: "Ends Date", name: "ends_date", type: "date", value: state.selectedDate, required: true }),
+    renderField({ label: "Ends Time", name: "ends_time", type: "time", value: "10:00", required: true }),
+  );
+  const recurrenceKindFields = el("div", "control-split");
+  recurrenceKindFields.append(
     renderSelect({
       label: "Recurrence",
       name: "recurrence_kind",
-      options: [["single", "Single"], ["weekly", "Weekly"]],
-      value: "single",
+      options: [["none", "None"], ["week", "Week"], ["month", "Month"], ["year", "Year"]],
+      value: "none",
     }),
-  );
-  const recurrenceFields = el("div", "control-split calendar-recurrence-fields");
-  recurrenceFields.append(
-    renderWeekdayField(),
-    renderField({ label: "Week Count", name: "week_count", type: "number", value: "1", min: 1 }),
+    renderField({ label: "Recurrence Count", name: "recurrence_count", type: "number", value: "1", min: 1 }),
   );
   const eventTags = renderField({ label: "Event Tags", name: "event_tags", placeholder: "workout, calendar" });
   const eventDescription = renderTextarea({ label: "Event Description", name: "event_description", placeholder: "Strength block." });
   eventFields.append(
     eventBasics,
     scheduleFields,
-    durationRecurrenceFields,
-    recurrenceFields,
+    endFields,
+    recurrenceKindFields,
     eventTags,
     eventDescription,
   );
@@ -543,7 +554,7 @@ export function renderCalendarPage(target) {
   const eventDetailValues = {
     aggregate: renderReadonlyDetail("Aggregate"),
     startsAt: renderReadonlyDetail("Starts At"),
-    duration: renderReadonlyDetail("Duration"),
+    endsAt: renderReadonlyDetail("Ends At"),
     status: renderReadonlyDetail("Status"),
     location: renderReadonlyDetail("Location", "accounting-readonly--wide"),
     tags: renderReadonlyDetail("Tags", "accounting-readonly--wide"),
@@ -722,7 +733,7 @@ export function renderCalendarPage(target) {
     const firstIndex = (state.eventPage - 1) * eventPageSize;
     const visibleEvents = state.aggregateEvents.slice(firstIndex, firstIndex + eventPageSize);
     if (visibleEvents.length === 0) {
-      renderEmptyRow(eventTable.body, 7, "No events found for this aggregate.");
+      renderEmptyRow(eventTable.body, 6, "No events found for this aggregate.");
     } else {
       eventTable.body.replaceChildren(...visibleEvents.map((event) => {
         const row = el("tr", `accounting-row ${isInactiveEventStatus(event.status) ? "calendar-status-voided" : ""}`.trim());
@@ -737,7 +748,6 @@ export function renderCalendarPage(target) {
         const tagsCell = document.createElement("td");
         tagsCell.append(renderTagCollection(event.tags));
         row.append(tagsCell);
-        renderTableCell(row, event.metadata?.description || "--");
         enableRow(row, () => void openEvent(event.ref_code, "aggregate"));
         return row;
       }));
@@ -770,7 +780,7 @@ export function renderCalendarPage(target) {
     ));
     eventDetailValues.aggregate.value.textContent = `${aggregate?.metadata?.title ?? "Aggregate"} / ${event.aggregate_ref_code}`;
     eventDetailValues.startsAt.value.textContent = formatLocalDateTime(event.starts_at);
-    eventDetailValues.duration.value.textContent = `${event.duration_minutes} minutes`;
+    eventDetailValues.endsAt.value.textContent = formatLocalDateTime(event.ends_at);
     eventDetailValues.status.value.textContent = titleCase(event.status);
     eventDetailValues.location.value.textContent = event.metadata?.location || aggregate?.metadata?.location || "--";
     eventDetailValues.tags.value.replaceChildren(renderTagCollection(event.tags));
@@ -877,8 +887,9 @@ export function renderCalendarPage(target) {
     state.formReturnView = returnView;
     aggregateForm.reset();
     aggregateForm.elements.timezone.value = defaultTimezone;
+    updateAggregateImportState();
     setView("new-aggregate");
-    setNotice("New Aggregate", "Create the aggregate first, then add events from its detail page.", "info");
+    setNotice("New Aggregate", "Create an empty aggregate or import its events from ICS.", "info");
   }
 
   function showEventForm(returnView = "aggregate") {
@@ -890,50 +901,124 @@ export function renderCalendarPage(target) {
     eventForm.reset();
     eventForm.elements.starts_date.value = state.selectedDate;
     eventForm.elements.starts_time.value = "09:00";
-    eventForm.elements.duration_minutes.value = "60";
-    eventForm.elements.recurrence_kind.value = "single";
-    eventForm.elements.week_count.value = "1";
-    const defaultWeekday = weekdayForDate(state.selectedDate);
-    Array.from(eventForm.elements.weekday).forEach((checkbox) => {
-      checkbox.checked = checkbox.value === defaultWeekday;
-    });
+    eventForm.elements.ends_date.value = state.selectedDate;
+    eventForm.elements.ends_time.value = "10:00";
+    eventForm.elements.recurrence_kind.value = "none";
+    eventForm.elements.recurrence_count.value = "1";
     updateEventRecurrenceFields();
     setView("new-event");
     setNotice("Add Event", `Adding events under ${state.selectedAggregate.metadata?.title ?? state.selectedAggregate.ref_code}.`, "info");
   }
 
   function updateEventRecurrenceFields() {
-    const isWeekly = eventForm.elements.recurrence_kind.value === "weekly";
-    recurrenceFields.hidden = !isWeekly;
-    Array.from(recurrenceFields.querySelectorAll("input")).forEach((input) => {
-      input.disabled = !isWeekly;
+    const repeats = eventForm.elements.recurrence_kind.value !== "none";
+    eventForm.elements.recurrence_count.disabled = !repeats;
+  }
+
+  function updateAggregateImportState() {
+    const importsICS = Boolean(aggregateForm.elements.ics_text.value.trim());
+    saveAggregateButton.textContent = importsICS ? "IMPORT" : "SAVE";
+    ["aggregate_tags", "timezone", "aggregate_location", "aggregate_description"].forEach((name) => {
+      aggregateForm.elements[name].disabled = importsICS;
     });
+  }
+
+  async function downloadICSFromURL() {
+    const sourceValue = aggregateForm.elements.ics_url.value.trim();
+    if (!sourceValue) {
+      setNotice("Unable to Download ICS", "Provide an ICS URL first.", "warning");
+      aggregateForm.elements.ics_url.focus();
+      return;
+    }
+
+    let sourceURL;
+    try {
+      sourceURL = new URL(sourceValue);
+      if (sourceURL.protocol !== "http:" && sourceURL.protocol !== "https:") {
+        throw new Error("ICS URL must use HTTP or HTTPS");
+      }
+    } catch (error) {
+      setNotice("Unable to Download ICS", error.message, "warning");
+      return;
+    }
+
+    setFormBusy(aggregateForm, true);
+    setNotice("Downloading ICS", `Downloading ${sourceURL.toString()} in the browser.`, "info");
+    try {
+      const response = await fetch(sourceURL, {
+        credentials: "omit",
+        headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.1" },
+      });
+      if (!response.ok) {
+        throw new Error(`ICS download failed with ${response.status}`);
+      }
+      const declaredSize = Number(response.headers.get("Content-Length"));
+      if (Number.isFinite(declaredSize) && declaredSize > maximumICSFileBytes) {
+        throw new Error("ICS content exceeds the 1 MiB import limit");
+      }
+      const source = await response.blob();
+      if (source.size > maximumICSFileBytes) {
+        throw new Error("ICS content exceeds the 1 MiB import limit");
+      }
+      const text = await source.text();
+      if (!text.trim()) {
+        throw new Error("ICS download returned empty content");
+      }
+      aggregateForm.elements.ics_text.value = text;
+      updateAggregateImportState();
+      setNotice("ICS Downloaded", "The downloaded content is shown in ICS Text and can be reviewed before import.", "info");
+    } catch (error) {
+      setNotice("Unable to Download ICS", error.message, "warning");
+    } finally {
+      setFormBusy(aggregateForm, false);
+      updateAggregateImportState();
+    }
   }
 
   async function createAggregate(event) {
     event.preventDefault();
+    const icsText = aggregateForm.elements.ics_text.value;
+    const importsICS = Boolean(icsText.trim());
     setFormBusy(aggregateForm, true);
     try {
-      const result = await postJSON("/api/calendar/aggregates", {
-        metadata: {
-          title: aggregateForm.elements.aggregate_title.value.trim(),
-          description: aggregateForm.elements.aggregate_description.value,
-          location: aggregateForm.elements.aggregate_location.value.trim(),
-          timezone: aggregateForm.elements.timezone.value.trim(),
-        },
-        tags: splitTags(aggregateForm.elements.aggregate_tags.value),
-      });
+      let result;
+      if (importsICS) {
+        const source = new Blob([icsText], { type: "text/calendar;charset=utf-8" });
+        if (source.size > maximumICSFileBytes) {
+          throw new Error("ICS content exceeds the 1 MiB import limit");
+        }
+        const body = new FormData();
+        body.append("title", aggregateForm.elements.aggregate_title.value.trim());
+        body.append("file", source, "calendar.ics");
+        result = await postFormData("/api/calendar/aggregates/import-ics", body);
+      } else {
+        result = await postJSON("/api/calendar/aggregates", {
+          metadata: {
+            title: aggregateForm.elements.aggregate_title.value.trim(),
+            description: aggregateForm.elements.aggregate_description.value,
+            location: aggregateForm.elements.aggregate_location.value.trim(),
+            timezone: aggregateForm.elements.timezone.value.trim(),
+          },
+          tags: splitTags(aggregateForm.elements.aggregate_tags.value),
+        });
+      }
       await loadOverview({ announce: false });
       state.selectedAggregate = result.aggregate;
       state.aggregateEvents = result.events ?? [];
       state.eventPage = 1;
       renderAggregateDetail();
       setView("aggregate");
-      setNotice("Aggregate Created", `${result.aggregate.metadata?.title ?? result.aggregate.ref_code} is ready for events.`, "info");
+      if (importsICS) {
+        const importedCount = state.aggregateEvents.length;
+        setNotice("ICS Imported", `${importedCount} event${importedCount === 1 ? "" : "s"} imported into ${result.aggregate.metadata?.title ?? result.aggregate.ref_code}.`, "info");
+      } else {
+        setNotice("Aggregate Created", `${result.aggregate.metadata?.title ?? result.aggregate.ref_code} is ready for events.`, "info");
+      }
     } catch (error) {
-      setNotice("Unable to Create Aggregate", error.message, "warning");
+      setNotice(importsICS ? "Unable to Import ICS" : "Unable to Create Aggregate", error.message, "warning");
     } finally {
       setFormBusy(aggregateForm, false);
+      updateAggregateImportState();
     }
   }
 
@@ -944,26 +1029,22 @@ export function renderCalendarPage(target) {
       setNotice("Unable to Create Event", "Open an aggregate before adding events.", "warning");
       return;
     }
-    const durationMinutes = Number(eventForm.elements.duration_minutes.value);
     const startsAt = combineLocalDateTime(eventForm.elements.starts_date.value, eventForm.elements.starts_time.value);
-    if (!startsAt || !Number.isInteger(durationMinutes) || durationMinutes < 1) {
-      setNotice("Unable to Create Event", "Provide a valid start date, time and positive duration.", "warning");
+    const endsAt = combineLocalDateTime(eventForm.elements.ends_date.value, eventForm.elements.ends_time.value);
+    if (!startsAt || !endsAt || new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+      setNotice("Unable to Create Event", "Provide valid start and end times, with the end after the start.", "warning");
       return;
     }
 
     const recurrenceKind = eventForm.elements.recurrence_kind.value;
     const recurrence = { kind: recurrenceKind };
-    if (recurrenceKind === "weekly") {
-      const weekdays = Array.from(eventForm.elements.weekday)
-        .filter((checkbox) => checkbox.checked)
-        .map((checkbox) => checkbox.value);
-      const weekCount = Number(eventForm.elements.week_count.value);
-      if (weekdays.length === 0 || !Number.isInteger(weekCount) || weekCount < 1) {
-        setNotice("Unable to Create Event", "Weekly recurrence needs at least one weekday and a positive week count.", "warning");
+    if (recurrenceKind !== "none") {
+      const recurrenceCount = Number(eventForm.elements.recurrence_count.value);
+      if (!Number.isInteger(recurrenceCount) || recurrenceCount < 1) {
+        setNotice("Unable to Create Event", "Recurrence needs a positive count.", "warning");
         return;
       }
-      recurrence.weekdays = weekdays;
-      recurrence.week_count = weekCount;
+      recurrence.count = recurrenceCount;
     }
 
     setFormBusy(eventForm, true);
@@ -976,7 +1057,7 @@ export function renderCalendarPage(target) {
         },
         tags: splitTags(eventForm.elements.event_tags.value),
         starts_at: startsAt,
-        duration_minutes: durationMinutes,
+        ends_at: endsAt,
         recurrence,
       });
       const firstEvent = result.events?.[0];
@@ -1113,6 +1194,8 @@ export function renderCalendarPage(target) {
     }
   });
   eventForm.elements.recurrence_kind.addEventListener("change", updateEventRecurrenceFields);
+  aggregateForm.elements.ics_text.addEventListener("input", updateAggregateImportState);
+  downloadICSButton.addEventListener("click", () => void downloadICSFromURL());
   aggregateForm.addEventListener("submit", (event) => void createAggregate(event));
   eventForm.addEventListener("submit", (event) => void createEvent(event));
   backToAggregateButton.addEventListener("click", () => {

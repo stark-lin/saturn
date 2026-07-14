@@ -10,6 +10,7 @@ import (
 type EventService interface {
 	ListEventAggregates(ctx context.Context, actor auth.Principal, query EventAggregateQuery) (EventAggregatePage, error)
 	CreateEventAggregate(ctx context.Context, actor auth.Principal, input CreateEventAggregateInput) (EventAggregateDetail, error)
+	ImportEventAggregate(ctx context.Context, actor auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error)
 	CreateEvent(ctx context.Context, actor auth.Principal, aggregateRefCode string, input CreateEventInput) (EventAggregateDetail, error)
 	GetEventAggregate(ctx context.Context, actor auth.Principal, refCode string) (EventAggregateDetail, error)
 	DeleteEventAggregate(ctx context.Context, actor auth.Principal, refCode string) error

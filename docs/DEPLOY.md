@@ -21,6 +21,10 @@ local filesystem storage volume
 
 Redis is a required component; a no-Redis mode is not provided.
 
+For host-machine development, Compose publishes PostgreSQL at
+`127.0.0.1:5432` and Redis at `127.0.0.1:6379`. These dependency ports are
+bound to loopback only; the application remains published on port `8080`.
+
 `docker-compose.yml` uses `depends_on` for container startup order only. Dependency readiness is enforced by the application startup wait described below, so the app container may start before PostgreSQL or Redis accepts connections, then block until both are ready or the configured readiness timeout expires.
 
 Files default to using the local filesystem runtime backend. The Docker development environment mounts `/app/objects` to the `objects-data` volume; local development defaults to writing to `./objects`.
@@ -53,6 +57,8 @@ Do not configure the public internet or arbitrary source subnets as trusted prox
 The development configuration provides a default JWT secret and injects an `admin/admin` `superuser` login account after schema creation, facilitating local testing. If `/app/config.json` is absent on startup, Saturn generates one with a random JWT secret and writes it to disk; production deployments should mount a persistent config at that path rather than relying on regeneration. The JWT secret and default administrator password must be replaced prior to actual deployment.
 
 During the development phase, when the application starts, it will automatically execute `migrations/*.sql` to initialize the PostgreSQL schema. Currently, formal migration version tables are not maintained, and production-style incremental migrations are not performed. If schema conflicts occur during the development phase, the handling method is to set `database.drop_tables=true` to drop old tables and rebuild; do not place valuable data in a development database where this option will be enabled.
+
+The NTE object-model upgrade adds the required `note_versions` table in `000015_notes_version_objects.sql`. A development database created before this migration is detected as incomplete and must be rebuilt with `database.drop_tables=true` under the current bootstrap policy. The migration includes legacy Note-to-v1 backfill SQL for controlled/manual migration use, but normal startup does not incrementally apply it to an already complete older schema.
 
 ---
 

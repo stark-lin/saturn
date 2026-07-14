@@ -176,11 +176,11 @@ func (r *SQLRepository) CreateEvent(ctx context.Context, ownerID int64, aggregat
 	var event Event
 	var metadataJSON []byte
 	err = executor.QueryRowContext(ctx, `
-INSERT INTO events (owner_id, aggregate_id, starts_at, duration_minutes, metadata)
+INSERT INTO events (owner_id, aggregate_id, starts_at, ends_at, metadata)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, owner_id, aggregate_id, starts_at, duration_minutes, metadata, status, created_at, updated_at`,
-		ownerID, aggregateID, input.StartsAt, input.DurationMinutes, metadata).Scan(
-		&event.ID, &event.OwnerID, &event.AggregateID, &event.StartsAt, &event.DurationMinutes,
+RETURNING id, owner_id, aggregate_id, starts_at, ends_at, metadata, status, created_at, updated_at`,
+		ownerID, aggregateID, input.StartsAt, input.EndsAt, metadata).Scan(
+		&event.ID, &event.OwnerID, &event.AggregateID, &event.StartsAt, &event.EndsAt,
 		&metadataJSON, &event.Status, &event.CreatedAt, &event.UpdatedAt,
 	)
 	if err != nil {
@@ -368,7 +368,7 @@ func scanEvent(row rowScanner) (Event, error) {
 	var metadataJSON []byte
 	err := row.Scan(
 		&event.ID, &event.OwnerID, &event.ObjectRefID, &event.RefCode, pq.Array(&event.Tags), &event.AggregateID, &event.AggregateRefCode,
-		&event.StartsAt, &event.DurationMinutes, &metadataJSON, &event.Status, &event.CreatedAt, &event.UpdatedAt,
+		&event.StartsAt, &event.EndsAt, &metadataJSON, &event.Status, &event.CreatedAt, &event.UpdatedAt,
 	)
 	if err != nil {
 		return Event{}, err
@@ -391,7 +391,7 @@ JOIN object_refs AS aggregate_ref
 
 const eventBaseSQL = `
 SELECT e.id, e.owner_id, event_ref.id, event_ref.ref_code, event_ref.tags, e.aggregate_id, aggregate_ref.ref_code,
-       e.starts_at, e.duration_minutes, e.metadata, e.status, e.created_at, e.updated_at
+       e.starts_at, e.ends_at, e.metadata, e.status, e.created_at, e.updated_at
 FROM events AS e
 JOIN object_refs AS event_ref
   ON event_ref.owner_id = e.owner_id

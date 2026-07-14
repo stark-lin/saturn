@@ -127,7 +127,7 @@ Resource-level authorization is executed at the service layer.
 Access does not generate business SQL; the repo only applies fixed scopes.
 Platform/Search is currently an ObjectRef metadata capability for exact reference lookup, filtered metadata search, and recent-object metadata.
 Platform/ObjectRef can provide unified readable reference codes for important objects, and return title/tags/status projections as a unified owner-only metadata result for user reference, LLM calls, search, and cross-module association.
-Calendar is reduced to EventAggregate / Event: Aggregate owns immutable metadata and tags, and specific events own start time, duration, immutable metadata, tags, and scheduled/finished/voided status.
+Calendar is reduced to EventAggregate / Event: Aggregate owns immutable metadata and tags, and specific events own start and end timestamps, immutable metadata, tags, and scheduled/finished/voided status.
 Life Records is reduced to Accounting / Bookkeeping.
 Accounting only records and aggregates; it does not provide investment advice or automatic bank synchronization.
 ```

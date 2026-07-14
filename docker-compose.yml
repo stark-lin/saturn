@@ -1,5 +1,6 @@
 # This Compose file runs Saturn from the published GHCR image with PostgreSQL,
-# Redis, and local file storage. Only the web app is exposed on port 8080.
+# Redis, and local file storage. The web app is exposed on port 8080, while
+# PostgreSQL and Redis are published on loopback for host-machine development.
 services:
   app:
     image: ghcr.io/stark-lin/saturn:latest
@@ -13,6 +14,8 @@ services:
 
   postgres:
     image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: saturn
       POSTGRES_USER: saturn
@@ -22,6 +25,8 @@ services:
 
   redis:
     image: redis:8-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
 
 volumes:
   postgres-data:

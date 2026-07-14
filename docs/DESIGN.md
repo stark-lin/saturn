@@ -349,6 +349,7 @@ Rules:
 * Route switching only replaces the module page content within the Scrollable Main Area.
 * Files / Notes / Accounting / Calendar / LLM / Operations pages do not repeatedly declare global fixed areas.
 * Cross-module capabilities such as global search, main module navigation, and system status are carried by the App Shell.
+* The App Shell requests `/healthz` after authentication and every 5 seconds thereafter. A response with `status = ok` displays a green `Online` indicator; request failures and all other statuses display a red `Offline` indicator.
 * The current static frontend first version uses a root-owned hash view: the browser request path remains `/`, the left Control Rack only updates hashes like `#files` / `#notes`, and switches the scrollable content area inside the root page.
 
 ## 5. Navigation Model
@@ -469,7 +470,7 @@ Key components:
 * Template Picker
 * Linked References Panel
 
-The current Notes page in `web/src` is already integrated with the owner-only `/api/notes` single-copy Markdown Note CRUD: the list uses server-side summary responses and is fixed to pagination with `limit=10`, `offset`, and the pagination control on the left of the footer adopts the previous/current/next logic consistent with Accounting; Markdown details are only loaded after an item is opened, and page-level notices display load or save errors independently; creation, saving, and deletion are all persisted to the server. Collections, templates, associations, RSS, and versions remain future capabilities.
+The current Notes page in `web/src` uses the owner-only `/api/notes` logical Note API: list/detail show the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. The editor's `HISTORY` mode loads the current Note's version summaries and lets the user click a version to read its immutable content through the version RefCode endpoint without replacing the current draft. Delete permanently removes the logical Note, its complete version history, and all associated ObjectRefs; neither the UI nor API provides content restoration. Collections, templates, associations, and RSS remain future UI capabilities.
 
 ### 6.4 Accounting
 
@@ -501,11 +502,12 @@ Content:
 * EventAggregate
 * Event
 * Main Calendar view
-* Single / weekly expansion upon Event creation
+* None / week / month / year recurrence expansion by count upon Event creation
 
 First version strategy:
 
 * First implement aggregate lists, empty aggregate creation, aggregate details, event creation under aggregate, event finish, and event void operations.
+* Create Event Aggregate also supports optional synchronous ICS import: the browser can fetch an HTTP(S) ICS URL into an editable text area, or the user can paste ICS text directly; submitting non-empty ICS text uses the existing multipart import endpoint, while an empty text area keeps the normal empty aggregate flow.
 * Do not rush into complex calendar views.
 * Small monthly calendars and agenda previews can be retained in the current component reference page for visual reference.
 
@@ -516,8 +518,8 @@ Key components:
 * Void Action
 * Date Picker
 * Time Picker
-* Duration Input
-* Weekly Repeat Builder
+* End Date / Time Input
+* Recurrence Kind / Count Controls
 * Schedule / Agenda List
 
 ### 6.6 LLM

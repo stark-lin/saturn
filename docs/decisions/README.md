@@ -16,4 +16,5 @@ Do not put ordinary implementation notes or to-do items into decisions
 ```text
 0001-initial-code-inventory.md
 0002-sqlc-query-generation.md
+0003-gin-http-router.md
 ```

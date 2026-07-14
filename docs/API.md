@@ -36,9 +36,9 @@ Cross-module orchestrations are still recorded in the orchestrating owner's API 
 | Module | Document | Reserved Path Prefix | Current Public Route Status |
 | --- | --- | --- | --- |
 | Accounting | [api/ACCOUNTING.md](api/ACCOUNTING.md) | `/api/accounting` | Ledger and immutable transaction APIs registered |
-| Notes | [api/NOTES.md](api/NOTES.md) | `/api/notes` | Owner-only CRUD registered |
+| Notes | [api/NOTES.md](api/NOTES.md) | `/api/notes` | Logical Note CRUD and immutable version APIs registered |
 | Files | [api/FILES.md](api/FILES.md) | `/api/files` | Collection / File APIs registered |
-| Calendar | [api/CALENDAR.md](api/CALENDAR.md) | `/api/calendar` | EventAggregate / Event APIs registered |
+| Calendar | [api/CALENDAR.md](api/CALENDAR.md) | `/api/calendar` | EventAggregate / ICS import / Event APIs registered |
 | LLM | [api/LLM.md](api/LLM.md) | `/api/llm` | Session / Request / Response APIs registered |
 | Platform | [api/PLATFORM.md](api/PLATFORM.md) | `/api/auth`, `/api/events`, `/api/platform/*` | Auth, events, metadata, and superuser audit queries registered |
 
@@ -168,6 +168,7 @@ The authoritative source for ref_code is object_refs; the source business table 
 Cross-module metadata projections of title, tags, and status are stored in object_refs; tags use object_refs.tags TEXT[]
 Clients must not generate, reserve, or submit ref_code when creating business objects
 The service of the object's owning module claims and registers the ref_code from Platform/ObjectRef during the server-side creation operation, and returns this code to the client only upon a successful response
+The three-letter prefix is a module namespace, not an object type; ObjectRef metadata is authoritative for object_type, including NTE `nte-obj` and `version-obj`
 No standalone ref_code claim endpoint separated from source resource creation is provided
 Formal resource relationships still use internal ids
 Reading the actual object via ref_code still goes to the corresponding module's service / facade
@@ -177,7 +178,7 @@ Metadata collection queries receive a JSON body via POST /api/platform/object-re
 Recently updated metadata queries are returned as a JSON list by GET /api/platform/recent-objects?limit=<count>; limit defaults to 10, with a range of 1..50
 Metadata responses uniformly include title, tags, and status; tagless objects return an empty array, and tags retain their first-occurrence order after server-side normalization
 Whenever ref_code is returned in a business object response, tags must also be returned simultaneously; SYS-00000000 is used only for system-level audit targets, is not registered as a business object, and does not require tags
-Source business modules synchronously maintain the corresponding metadata projection when creating, updating, or deleting objects that affect title/tags/status
+Source business modules synchronously maintain the corresponding metadata projection when creating or updating objects that affect title/tags/status, and hard deletion removes the projection; Notes hard deletion removes both its `nte-obj` and every associated `version-obj`
 These metadata queries only allow access by the resource owner; status does not grant read permissions, nor does the superuser role relax this entry point
 Metadata interfaces do not return business object contents, owner_ids, internal object ids, or business detail URLs; the actual reading endpoint is still defined by the module that owns the object
 ```

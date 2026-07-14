@@ -103,7 +103,7 @@ function renderChoice({ code, meta, title, description, onOpen }) {
   const copy = el("span", "settings-choice__copy");
   copy.append(el("span", "settings-choice__title", title), el("span", "settings-choice__text", description));
 
-  choice.append(head, copy, el("span", "settings-choice__command", "OPEN"));
+  choice.append(head, copy);
   return choice;
 }
 

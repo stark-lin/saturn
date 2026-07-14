@@ -93,6 +93,56 @@ func TestHealthRoute(t *testing.T) {
 	}
 }
 
+func TestHeadHealthRoute(t *testing.T) {
+	a := newTestApp(t)
+	req := httptest.NewRequest(http.MethodHead, "/healthz", nil)
+	rec := httptest.NewRecorder()
+
+	a.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("head health route status = %d; want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestAdaptHTTPHandlerMapsGinParametersToRequestPathValues(t *testing.T) {
+	router := newHTTPRouter()
+	router.GET("/objects/:ref_code", adaptHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.PathValue("ref_code")))
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/objects/NTE-00000001", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parameter route status = %d; want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Body.String(); got != "NTE-00000001" {
+		t.Fatalf("path value = %q; want %q", got, "NTE-00000001")
+	}
+}
+
+func TestGinFallbackServesWebFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "index.html"), []byte("<h1>Saturn</h1>"), 0o600); err != nil {
+		t.Fatalf("write web index: %v", err)
+	}
+	a := newTestApp(t)
+	a.Config.Web.Root = root
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	a.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("web route status = %d; want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Body.String(); got != "<h1>Saturn</h1>" {
+		t.Fatalf("web route body = %q; want %q", got, "<h1>Saturn</h1>")
+	}
+}
+
 func TestUnknownRouteReturns404(t *testing.T) {
 	a := newTestApp(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil)
@@ -172,6 +222,7 @@ func TestCalendarRoutesAreRegistered(t *testing.T) {
 		{method: http.MethodGet, path: "/api/calendar/view?from=2026-06-01&to=2026-06-02"},
 		{method: http.MethodGet, path: "/api/calendar/aggregates"},
 		{method: http.MethodPost, path: "/api/calendar/aggregates"},
+		{method: http.MethodPost, path: "/api/calendar/aggregates/import-ics"},
 		{method: http.MethodGet, path: "/api/calendar/aggregates/CAL-00000001"},
 		{method: http.MethodDelete, path: "/api/calendar/aggregates/CAL-00000001"},
 		{method: http.MethodPost, path: "/api/calendar/aggregates/CAL-00000001/events"},
@@ -216,6 +267,48 @@ func TestLLMRoutesAreRegistered(t *testing.T) {
 				t.Errorf("llm route status = %d; want %d", rec.Code, http.StatusUnauthorized)
 			}
 		})
+	}
+}
+
+func TestNotesRoutesExcludeRestoreOperations(t *testing.T) {
+	a := newTestApp(t)
+
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/notes"},
+		{method: http.MethodPost, path: "/api/notes"},
+		{method: http.MethodGet, path: "/api/notes/versions/by-ref/NTE-00000002"},
+		{method: http.MethodGet, path: "/api/notes/NTE-00000001"},
+		{method: http.MethodGet, path: "/api/notes/NTE-00000001/versions"},
+		{method: http.MethodPatch, path: "/api/notes/NTE-00000001"},
+		{method: http.MethodDelete, path: "/api/notes/NTE-00000001"},
+	} {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, test.path, nil)
+			rec := httptest.NewRecorder()
+
+			a.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("notes route status = %d; want %d", rec.Code, http.StatusUnauthorized)
+			}
+		})
+	}
+
+	for _, path := range []string{
+		"/api/notes/NTE-00000001/restore",
+		"/api/notes/NTE-00000001/versions/NTE-00000002/restore",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		rec := httptest.NewRecorder()
+
+		a.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("removed restore route %s status = %d; want %d", path, rec.Code, http.StatusNotFound)
+		}
 	}
 }
 
@@ -271,7 +364,7 @@ func newTestApp(t *testing.T) *App {
 	t.Helper()
 
 	a := &App{
-		Router:         http.NewServeMux(),
+		Router:         newHTTPRouter(),
 		StartedAt:      time.Unix(0, 0),
 		AuthHTTP:       &auth.Handler{},
 		Events:         &httpx.Broker{},

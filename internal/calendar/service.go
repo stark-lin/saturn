@@ -19,7 +19,7 @@ var (
 	ErrInvalidQuery          = errors.New("invalid calendar query")
 )
 
-const maxRecurrenceWeekCount = 520
+const maxRecurrenceCount = 520
 
 type ObjectReferenceService interface {
 	ClaimCode(ctx context.Context, objectType ref.ObjectType) (string, error)
@@ -61,14 +61,56 @@ func (s *Service) ListEventAggregates(ctx context.Context, actor auth.Principal,
 }
 
 func (s *Service) CreateEventAggregate(ctx context.Context, actor auth.Principal, input CreateEventAggregateInput) (EventAggregateDetail, error) {
+	return s.createEventAggregateWithEvents(ctx, actor, input, nil)
+}
+
+func (s *Service) ImportEventAggregate(ctx context.Context, actor auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error) {
+	parsed, err := parseICSImport(input)
+	if err != nil {
+		return EventAggregateDetail{}, wrapInvalidICSImport(err)
+	}
+	return s.createEventAggregateWithEvents(ctx, actor, CreateEventAggregateInput{
+		Metadata: EventAggregateMetadata{
+			Title:       input.Title,
+			Description: parsed.Description,
+			Timezone:    parsed.Timezone,
+		},
+	}, parsed.Events)
+}
+
+func (s *Service) createEventAggregateWithEvents(
+	ctx context.Context,
+	actor auth.Principal,
+	input CreateEventAggregateInput,
+	eventInputs []CreateEventInput,
+) (EventAggregateDetail, error) {
 	input, err := normalizeCreateEventAggregateInput(input)
 	if err != nil {
 		return EventAggregateDetail{}, err
+	}
+	if len(eventInputs) > maxICSImportedEvents {
+		return EventAggregateDetail{}, ErrInvalidICSImport
+	}
+	normalizedEvents := make([]CreateEventInput, 0, len(eventInputs))
+	for _, eventInput := range eventInputs {
+		normalized, err := normalizeCreateEventInput(eventInput)
+		if err != nil || normalized.Recurrence.Kind != RecurrenceKindNone {
+			return EventAggregateDetail{}, ErrInvalidICSImport
+		}
+		normalizedEvents = append(normalizedEvents, normalized)
 	}
 
 	aggregateRefCode, err := s.references.ClaimCode(ctx, ref.ObjectTypeEventAggregate)
 	if err != nil {
 		return EventAggregateDetail{}, err
+	}
+	eventRefCodes := make([]string, 0, len(normalizedEvents))
+	for range normalizedEvents {
+		eventRefCode, err := s.references.ClaimCode(ctx, ref.ObjectTypeEvent)
+		if err != nil {
+			return EventAggregateDetail{}, err
+		}
+		eventRefCodes = append(eventRefCodes, eventRefCode)
 	}
 
 	var created EventAggregateDetail
@@ -89,13 +131,38 @@ func (s *Service) CreateEventAggregate(ctx context.Context, actor auth.Principal
 		aggregate.RefCode = aggregateRef.RefCode
 		aggregate.Tags = input.Tags
 		created.Aggregate = aggregate
-		created.Events = []Event{}
+		created.Events = make([]Event, 0, len(normalizedEvents))
 
 		if _, err := s.audit.Record(txCtx, audit.Event{
 			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
 			TargetRefCode: aggregate.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
+		}
+		for index, eventInput := range normalizedEvents {
+			event, err := s.repo.CreateEvent(txCtx, actor.ID, aggregate.ID, eventInput)
+			if err != nil {
+				return err
+			}
+			eventRef, err := s.references.Register(txCtx, ref.Registration{
+				OwnerID: actor.ID, RefCode: eventRefCodes[index], ObjectType: ref.ObjectTypeEvent,
+				ObjectID: event.ID, Title: eventProjectionTitle(event), Tags: eventInput.Tags, Status: string(EventStatusScheduled),
+			})
+			if err != nil {
+				return err
+			}
+			event.ObjectRefID = eventRef.ID
+			event.RefCode = eventRef.RefCode
+			event.AggregateRefCode = aggregate.RefCode
+			event.Status = EventStatusScheduled
+			event.Tags = eventInput.Tags
+			if _, err := s.audit.Record(txCtx, audit.Event{
+				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+				TargetRefCode: event.RefCode, Result: audit.ResultSuccess,
+			}); err != nil {
+				return err
+			}
+			created.Events = append(created.Events, event)
 		}
 		return nil
 	})
@@ -357,23 +424,20 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 	input.Metadata = normalizeEventMetadata(input.Metadata)
 	input.Tags = normalizedTags(input.Tags)
 	if input.Recurrence.Kind == "" {
-		input.Recurrence.Kind = RecurrenceKindSingle
+		input.Recurrence.Kind = RecurrenceKindNone
 	}
-	weekdays, validWeekdays := normalizedWeekdays(input.Recurrence.Weekdays)
-	if !validWeekdays {
-		return CreateEventInput{}, ErrInvalidEvent
-	}
-	input.Recurrence.Weekdays = weekdays
 
-	if input.Metadata.Title == "" || input.StartsAt.IsZero() || input.DurationMinutes < 1 {
+	if input.Metadata.Title == "" || input.StartsAt.IsZero() || input.EndsAt.IsZero() || !input.EndsAt.After(input.StartsAt) {
 		return CreateEventInput{}, ErrInvalidEvent
 	}
 	switch input.Recurrence.Kind {
-	case RecurrenceKindSingle:
-		input.Recurrence.Weekdays = nil
-		input.Recurrence.WeekCount = 0
-	case RecurrenceKindWeekly:
-		if input.Recurrence.WeekCount < 1 || input.Recurrence.WeekCount > maxRecurrenceWeekCount || len(input.Recurrence.Weekdays) == 0 {
+	case RecurrenceKindNone:
+		if input.Recurrence.Count < 0 || input.Recurrence.Count > 1 {
+			return CreateEventInput{}, ErrInvalidEvent
+		}
+		input.Recurrence.Count = 1
+	case RecurrenceKindWeek, RecurrenceKindMonth, RecurrenceKindYear:
+		if input.Recurrence.Count < 1 || input.Recurrence.Count > maxRecurrenceCount {
 			return CreateEventInput{}, ErrInvalidEvent
 		}
 	default:
@@ -384,22 +448,17 @@ func normalizeCreateEventInput(input CreateEventInput) (CreateEventInput, error)
 
 func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 	switch input.Recurrence.Kind {
-	case RecurrenceKindSingle:
+	case RecurrenceKindNone:
 		return []CreateEventInput{eventInputAt(input, input.StartsAt)}, nil
-	case RecurrenceKindWeekly:
-		events := make([]CreateEventInput, 0, len(input.Recurrence.Weekdays)*input.Recurrence.WeekCount)
-		weekStart := startOfWeek(input.StartsAt)
-		for week := 0; week < input.Recurrence.WeekCount; week++ {
-			for _, weekday := range input.Recurrence.Weekdays {
-				startsAt := atWeekdayTime(weekStart, week, weekday, input.StartsAt)
-				if startsAt.Before(input.StartsAt) {
-					continue
-				}
-				events = append(events, eventInputAt(input, startsAt))
+	case RecurrenceKindWeek, RecurrenceKindMonth, RecurrenceKindYear:
+		events := make([]CreateEventInput, 0, input.Recurrence.Count)
+		for occurrence := 0; occurrence < input.Recurrence.Count; occurrence++ {
+			startsAt := recurringEventStartsAt(input.StartsAt, input.Recurrence.Kind, occurrence)
+			eventInput := eventInputAt(input, startsAt)
+			if !eventInput.EndsAt.After(eventInput.StartsAt) {
+				return nil, ErrInvalidEvent
 			}
-		}
-		if len(events) == 0 {
-			return nil, ErrInvalidEvent
+			events = append(events, eventInput)
 		}
 		return events, nil
 	default:
@@ -407,26 +466,60 @@ func expandEventInputs(input CreateEventInput) ([]CreateEventInput, error) {
 	}
 }
 
-func eventInputAt(input CreateEventInput, startsAt time.Time) CreateEventInput {
-	return CreateEventInput{
-		Metadata: input.Metadata, Tags: input.Tags,
-		StartsAt: startsAt, DurationMinutes: input.DurationMinutes,
+func recurringEventStartsAt(startsAt time.Time, kind RecurrenceKind, occurrence int) time.Time {
+	switch kind {
+	case RecurrenceKindWeek:
+		return startsAt.AddDate(0, 0, occurrence*7)
+	case RecurrenceKindMonth:
+		return clampedCalendarDate(startsAt, 0, occurrence)
+	case RecurrenceKindYear:
+		return clampedCalendarDate(startsAt, occurrence, 0)
+	default:
+		return startsAt
 	}
 }
 
-func startOfWeek(t time.Time) time.Time {
-	date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-	offset := (int(date.Weekday()) + 6) % 7
-	return date.AddDate(0, 0, -offset)
+func clampedCalendarDate(template time.Time, yearOffset int, monthOffset int) time.Time {
+	targetMonth := time.Date(
+		template.Year()+yearOffset, template.Month()+time.Month(monthOffset), 1,
+		template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location(),
+	)
+	lastDay := time.Date(targetMonth.Year(), targetMonth.Month()+1, 0, 0, 0, 0, 0, targetMonth.Location()).Day()
+	day := template.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(
+		targetMonth.Year(), targetMonth.Month(), day,
+		template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location(),
+	)
 }
 
-func atWeekdayTime(weekStart time.Time, week int, weekday Weekday, template time.Time) time.Time {
-	dayOffset := map[Weekday]int{
-		WeekdayMonday: 0, WeekdayTuesday: 1, WeekdayWednesday: 2, WeekdayThursday: 3,
-		WeekdayFriday: 4, WeekdaySaturday: 5, WeekdaySunday: 6,
-	}[weekday]
-	date := weekStart.AddDate(0, 0, week*7+dayOffset)
-	return time.Date(date.Year(), date.Month(), date.Day(), template.Hour(), template.Minute(), template.Second(), template.Nanosecond(), template.Location())
+func eventInputAt(input CreateEventInput, startsAt time.Time) CreateEventInput {
+	return CreateEventInput{
+		Metadata: input.Metadata, Tags: input.Tags,
+		StartsAt: startsAt, EndsAt: recurringEventEndsAt(input, startsAt),
+	}
+}
+
+func recurringEventEndsAt(input CreateEventInput, startsAt time.Time) time.Time {
+	if startsAt.Equal(input.StartsAt) {
+		return input.EndsAt
+	}
+	templateEndsAt := input.EndsAt.In(input.StartsAt.Location())
+	dayOffset := calendarDayOffset(input.StartsAt, templateEndsAt)
+	endDate := startsAt.AddDate(0, 0, dayOffset)
+	return time.Date(
+		endDate.Year(), endDate.Month(), endDate.Day(),
+		templateEndsAt.Hour(), templateEndsAt.Minute(), templateEndsAt.Second(), templateEndsAt.Nanosecond(),
+		startsAt.Location(),
+	)
+}
+
+func calendarDayOffset(startsAt time.Time, endsAt time.Time) int {
+	startDate := time.Date(startsAt.Year(), startsAt.Month(), startsAt.Day(), 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(endsAt.Year(), endsAt.Month(), endsAt.Day(), 0, 0, 0, 0, time.UTC)
+	return int(endDate.Sub(startDate) / (24 * time.Hour))
 }
 
 func normalizeEventAggregateMetadata(metadata EventAggregateMetadata) EventAggregateMetadata {
@@ -440,37 +533,6 @@ func normalizeEventMetadata(metadata EventMetadata) EventMetadata {
 	return EventMetadata{
 		Title: strings.TrimSpace(metadata.Title), Description: strings.TrimSpace(metadata.Description),
 		Location: strings.TrimSpace(metadata.Location),
-	}
-}
-
-func normalizedWeekdays(days []Weekday) ([]Weekday, bool) {
-	seen := make(map[Weekday]struct{})
-	for _, day := range days {
-		day = Weekday(strings.ToLower(strings.TrimSpace(string(day))))
-		if !validWeekday(day) {
-			return nil, false
-		}
-		seen[day] = struct{}{}
-	}
-	weekOrder := []Weekday{
-		WeekdayMonday, WeekdayTuesday, WeekdayWednesday, WeekdayThursday,
-		WeekdayFriday, WeekdaySaturday, WeekdaySunday,
-	}
-	normalized := make([]Weekday, 0, len(seen))
-	for _, day := range weekOrder {
-		if _, exists := seen[day]; exists {
-			normalized = append(normalized, day)
-		}
-	}
-	return normalized, true
-}
-
-func validWeekday(day Weekday) bool {
-	switch day {
-	case WeekdayMonday, WeekdayTuesday, WeekdayWednesday, WeekdayThursday, WeekdayFriday, WeekdaySaturday, WeekdaySunday:
-		return true
-	default:
-		return false
 	}
 }
 

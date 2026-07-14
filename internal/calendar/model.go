@@ -16,20 +16,10 @@ const (
 type RecurrenceKind string
 
 const (
-	RecurrenceKindSingle RecurrenceKind = "single"
-	RecurrenceKindWeekly RecurrenceKind = "weekly"
-)
-
-type Weekday string
-
-const (
-	WeekdayMonday    Weekday = "mon"
-	WeekdayTuesday   Weekday = "tue"
-	WeekdayWednesday Weekday = "wed"
-	WeekdayThursday  Weekday = "thu"
-	WeekdayFriday    Weekday = "fri"
-	WeekdaySaturday  Weekday = "sat"
-	WeekdaySunday    Weekday = "sun"
+	RecurrenceKindNone  RecurrenceKind = "none"
+	RecurrenceKindWeek  RecurrenceKind = "week"
+	RecurrenceKindMonth RecurrenceKind = "month"
+	RecurrenceKindYear  RecurrenceKind = "year"
 )
 
 type EventAggregateMetadata struct {
@@ -63,7 +53,7 @@ type Event struct {
 	ObjectRefID      int64
 	RefCode          string
 	StartsAt         time.Time
-	DurationMinutes  int
+	EndsAt           time.Time
 	Metadata         EventMetadata
 	Status           EventStatus
 	Tags             []string
@@ -86,9 +76,8 @@ type CalendarView struct {
 }
 
 type RecurrenceInput struct {
-	Kind      RecurrenceKind
-	Weekdays  []Weekday
-	WeekCount int
+	Kind  RecurrenceKind
+	Count int
 }
 
 type CreateEventAggregateInput struct {
@@ -97,9 +86,9 @@ type CreateEventAggregateInput struct {
 }
 
 type CreateEventInput struct {
-	Metadata        EventMetadata
-	Tags            []string
-	StartsAt        time.Time
-	DurationMinutes int
-	Recurrence      RecurrenceInput
+	Metadata   EventMetadata
+	Tags       []string
+	StartsAt   time.Time
+	EndsAt     time.Time
+	Recurrence RecurrenceInput
 }

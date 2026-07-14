@@ -34,7 +34,7 @@ CAL stands for the Calendar module
 LLM stands for the LLM module
 ```
 
-The implementation format is fixed to `AAA-XXXXXXXX`: a three-letter uppercase module prefix, plus an eight-character uppercase Hex globally incrementing sequence number. The sequence number is uniformly allocated by the PostgreSQL `object_ref_code_sequence`; transaction rollbacks may leave sequence gaps, but allocated numbers are not reused. When the same module contains multiple object types, they are distinguished by `object_type` in the metadata.
+The implementation format is fixed to `AAA-XXXXXXXX`: a three-letter uppercase module prefix, plus an eight-character uppercase Hex globally incrementing sequence number. The sequence number is uniformly allocated by the PostgreSQL `object_ref_code_sequence`; transaction rollbacks may leave sequence gaps, but allocated numbers are not reused. A prefix is a module namespace, not an object-type discriminator. When a module contains multiple types, only `object_refs.object_type` identifies the concrete type.
 
 ---
 
@@ -87,13 +87,14 @@ object_refs
 This allows the system to resolve through a unified entry point:
 
 ```text
-NTE-00000001 -> note
-FIL-00000002 -> file_collection
-FIL-00000003 -> file
-ACC-00000004 -> account
-ACC-00000005 -> transaction
-CAL-00000006 -> event_aggregate
-CAL-00000007 -> event
+NTE-00000001 -> nte-obj
+NTE-00000002 -> version-obj
+FIL-00000003 -> file_collection
+FIL-00000004 -> file
+ACC-00000005 -> account
+ACC-00000006 -> transaction
+CAL-00000007 -> event_aggregate
+CAL-00000008 -> event
 ```
 
 `object_refs` is the authoritative source for `ref_code`, and cross-module display projections of `title`, `tags`, and `status`. The real content, the business source of title/tag, the meaning of status values, and status transition rules are still owned by the source business modules. `tags` are saved as `TEXT[]`; when written, they are trimmed, empty values are discarded, and duplicates are removed keeping the first occurrence, and responses preserve this order.
@@ -105,7 +106,8 @@ CAL-00000007 -> event
 Currently registered object type matrix:
 
 ```text
-note             NTE
+nte-obj          NTE
+version-obj      NTE
 file_collection  FIL
 file             FIL
 account          ACC
@@ -158,7 +160,17 @@ Business objects are created by clients calling the server create endpoint of th
 
 Upon receiving a create request, the business module service should, within the same creation operation, create the source record, claim the next unified `ref_code` from `platform/ref`, register the reference, and record the audit event; only upon successful response is the claimed `ref_code` returned to the client. If the transaction fails, no addressable new resource exists externally; the underlying global sequence allows gaps due to transaction rollbacks, and numbers must not be reused.
 
-When updating an object's title, tags, status, or user-visible content that affects the display of the last updated time, the source business module synchronously updates the `object_refs` display projection in the same business operation; when deleting the source object, the reference row is synchronously deleted.
+When updating an object's title, tags, status, or user-visible content that affects the display of the last updated time, the source business module synchronously updates the `object_refs` display projection in the same business operation. Hard-deleted objects remove their ObjectRefs. Notes deletion removes the `nte-obj` plus every immutable `version-obj` belonging to it in the same transaction.
+
+Notes is the canonical example of a module namespace containing multiple types:
+
+```text
+NTE RefCode namespace
+├── nte-obj: stable logical identity and mutable current-version pointer
+└── version-obj: immutable complete content snapshot, independently resolvable
+```
+
+Creating a Note claims one NTE code for each object. Every update claims a new NTE code for a new `version-obj`; the `nte-obj` then advances its current pointer. The API does not restore old content, and hard deletion permanently removes the logical and version ObjectRefs.
 
 Global metadata queries provide owner-only exact reference code queries, JSON body condition queries, and recent updates lists. Exact queries use the RESTful ObjectRef metadata endpoint:
 
@@ -171,7 +183,7 @@ Authorization: Bearer <token>
 {
   "ref_code": "NTE-00000001",
   "module": "notes",
-  "object_type": "note",
+  "object_type": "nte-obj",
   "title": "Release notes",
   "tags": ["backend", "release"],
   "status": "draft",
@@ -193,7 +205,7 @@ Content-Type: application/json
 ```json
 {
   "modules": ["notes"],
-  "object_types": ["note"],
+  "object_types": ["nte-obj", "version-obj"],
   "statuses": ["draft"],
   "tags": ["backend", "release"],
   "created_at": {
@@ -227,7 +239,7 @@ Authorization: Bearer <token>
     {
       "ref_code": "NTE-00000001",
       "module": "notes",
-      "object_type": "note",
+      "object_type": "nte-obj",
       "title": "Release notes",
       "tags": ["backend", "release"],
       "status": "draft",
@@ -262,4 +274,4 @@ Metadata queries perform owner-only isolation. Parsing a ref code only yields me
 
 ## 8. One-Sentence Summary
 
-Object Ref Code is a unified, readable reference code for all important internal objects in Saturn, used for user referencing, LLM calls, global metadata queries, and cross-module associations; internal data relationships still use database ids.
+Object Ref Code is a unified, readable module-level identity namespace for important Saturn objects; concrete type comes from ObjectRef metadata, while internal relationships still use database ids.

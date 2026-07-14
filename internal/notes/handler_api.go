@@ -62,6 +62,30 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, detailResponse(note))
 }
 
+func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
+	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	if !ok {
+		return
+	}
+	version, err := h.service.GetVersion(r.Context(), principal, refCode)
+	if h.writeServiceError(w, err) {
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, versionResponse(version))
+}
+
+func (h *Handler) ListVersions(w http.ResponseWriter, r *http.Request) {
+	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	if !ok {
+		return
+	}
+	versions, err := h.service.ListVersions(r.Context(), principal, refCode)
+	if h.writeServiceError(w, err) {
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, versionsResponse(versions))
+}
+
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	principal, refCode, ok := bindOwnedNoteRequest(w, r)
 	if !ok {
@@ -99,7 +123,7 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
 	case errors.Is(err, ErrInvalidMarkdown):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_markdown", "Invalid note markdown")
-	case errors.Is(err, ErrNoteNotFound), errors.Is(err, ref.ErrNotFound):
+	case errors.Is(err, ErrNoteNotFound), errors.Is(err, ErrVersionNotFound), errors.Is(err, ref.ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "Note not found")
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "notes_unavailable", "Notes service is unavailable")
@@ -113,8 +137,8 @@ func bindOwnedNoteRequest(w http.ResponseWriter, r *http.Request) (auth.Principa
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
 		return auth.Principal{}, "", false
 	}
-	refCode := strings.TrimSpace(r.PathValue("ref_code"))
-	if !ref.ValidCode(refCode) || !ref.CodeMatchesObjectType(refCode, ref.ObjectTypeNote) {
+	refCode := ref.NormalizeCode(strings.TrimSpace(r.PathValue("ref_code")))
+	if !ref.ValidCode(refCode) || !ref.CodeMatchesModule(refCode, ref.ModuleNotes) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid ref_code")
 		return auth.Principal{}, "", false
 	}

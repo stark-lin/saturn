@@ -20,7 +20,8 @@ const moduleOptions = [
 
 const objectTypeOptions = [
   ["", "ANY"],
-  ["note", "Note"],
+  ["nte-obj", "Note"],
+  ["version-obj", "Note version"],
   ["file_collection", "File Collection"],
   ["file", "File"],
   ["event_aggregate", "Event Aggregate"],

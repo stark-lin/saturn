@@ -14,6 +14,8 @@ import (
 	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
+const maxICSMultipartBodyBytes = MaxICSFileBytes + 64*1024
+
 func (h *Handler) ListEventAggregates(w http.ResponseWriter, r *http.Request) {
 	principal, ok := authenticatedPrincipal(w, r)
 	if !ok {
@@ -42,6 +44,41 @@ func (h *Handler) CreateEventAggregate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail, err := h.service.CreateEventAggregate(r.Context(), principal, request.input())
+	if h.writeServiceError(w, err) {
+		return
+	}
+	w.Header().Set("Location", "/api/calendar/aggregates/"+detail.Aggregate.RefCode)
+	httpx.WriteJSON(w, http.StatusCreated, eventAggregateResponse(detail))
+}
+
+func (h *Handler) ImportEventAggregate(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticatedPrincipal(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxICSMultipartBodyBytes)
+	if err := r.ParseMultipartForm(MaxICSFileBytes); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid calendar import request")
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if !validICSImportMultipart(r) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid calendar import request")
+		return
+	}
+	fileBody, err := r.MultipartForm.File["file"][0].Open()
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid calendar import request")
+		return
+	}
+	defer fileBody.Close()
+
+	detail, err := h.service.ImportEventAggregate(r.Context(), principal, ImportEventAggregateInput{
+		Title: r.MultipartForm.Value["title"][0],
+		Body:  fileBody,
+	})
 	if h.writeServiceError(w, err) {
 		return
 	}
@@ -87,7 +124,12 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid event request")
 		return
 	}
-	detail, err := h.service.CreateEvent(r.Context(), principal, aggregateRefCode, request.input(startsAt))
+	endsAt, err := parseTimestamp(request.EndsAt)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid event request")
+		return
+	}
+	detail, err := h.service.CreateEvent(r.Context(), principal, aggregateRefCode, request.input(startsAt, endsAt))
 	if h.writeServiceError(w, err) {
 		return
 	}
@@ -155,7 +197,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, auth.ErrUnauthenticated):
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
-	case errors.Is(err, ErrInvalidEventAggregate), errors.Is(err, ErrInvalidEvent), errors.Is(err, ErrInvalidQuery):
+	case errors.Is(err, ErrInvalidEventAggregate), errors.Is(err, ErrInvalidEvent),
+		errors.Is(err, ErrInvalidQuery), errors.Is(err, ErrInvalidICSImport):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid calendar request")
 	case errors.Is(err, ErrEventAlreadyFinished):
 		httpx.WriteError(w, http.StatusConflict, "conflict", "Event is already finished")
@@ -168,6 +211,16 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 		httpx.WriteError(w, http.StatusInternalServerError, "calendar_unavailable", "Calendar service is unavailable")
 	}
 	return true
+}
+
+func validICSImportMultipart(r *http.Request) bool {
+	if r.MultipartForm == nil || len(r.MultipartForm.Value) != 1 || len(r.MultipartForm.File) != 1 {
+		return false
+	}
+	titles, titleExists := r.MultipartForm.Value["title"]
+	files, fileExists := r.MultipartForm.File["file"]
+	return titleExists && len(titles) == 1 && strings.TrimSpace(titles[0]) != "" &&
+		fileExists && len(files) == 1 && files[0].Size <= MaxICSFileBytes
 }
 
 func authenticatedPrincipal(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) {

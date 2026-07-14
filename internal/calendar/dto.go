@@ -9,11 +9,11 @@ type CreateEventAggregateRequest struct {
 }
 
 type CreateEventRequest struct {
-	Metadata        EventMetadataRequest `json:"metadata"`
-	Tags            []string             `json:"tags"`
-	StartsAt        string               `json:"starts_at"`
-	DurationMinutes int                  `json:"duration_minutes"`
-	Recurrence      RecurrenceRequest    `json:"recurrence"`
+	Metadata   EventMetadataRequest `json:"metadata"`
+	Tags       []string             `json:"tags"`
+	StartsAt   string               `json:"starts_at"`
+	EndsAt     string               `json:"ends_at"`
+	Recurrence RecurrenceRequest    `json:"recurrence"`
 }
 
 type EventAggregateMetadataRequest struct {
@@ -30,9 +30,8 @@ type EventMetadataRequest struct {
 }
 
 type RecurrenceRequest struct {
-	Kind      RecurrenceKind `json:"kind"`
-	Weekdays  []Weekday      `json:"weekdays"`
-	WeekCount int            `json:"week_count"`
+	Kind  RecurrenceKind `json:"kind"`
+	Count int            `json:"count"`
 }
 
 type EventAggregateMetadataDetail struct {
@@ -59,7 +58,7 @@ type EventDetail struct {
 	RefCode          string              `json:"ref_code"`
 	AggregateRefCode string              `json:"aggregate_ref_code"`
 	StartsAt         time.Time           `json:"starts_at"`
-	DurationMinutes  int                 `json:"duration_minutes"`
+	EndsAt           time.Time           `json:"ends_at"`
 	Metadata         EventMetadataDetail `json:"metadata"`
 	Status           EventStatus         `json:"status"`
 	Tags             []string            `json:"tags"`
@@ -154,7 +153,7 @@ func eventDetail(event Event) EventDetail {
 	}
 	return EventDetail{
 		RefCode: event.RefCode, AggregateRefCode: event.AggregateRefCode,
-		StartsAt: event.StartsAt, DurationMinutes: event.DurationMinutes,
+		StartsAt: event.StartsAt, EndsAt: event.EndsAt,
 		Metadata: EventMetadataDetail{
 			Title: event.Metadata.Title, Description: event.Metadata.Description, Location: event.Metadata.Location,
 		},
@@ -172,16 +171,16 @@ func (r CreateEventAggregateRequest) input() CreateEventAggregateInput {
 	}
 }
 
-func (r CreateEventRequest) input(startsAt time.Time) CreateEventInput {
+func (r CreateEventRequest) input(startsAt time.Time, endsAt time.Time) CreateEventInput {
 	return CreateEventInput{
 		Metadata: EventMetadata{
 			Title: r.Metadata.Title, Description: r.Metadata.Description, Location: r.Metadata.Location,
 		},
-		Tags:            r.Tags,
-		StartsAt:        startsAt,
-		DurationMinutes: r.DurationMinutes,
+		Tags:     r.Tags,
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
 		Recurrence: RecurrenceInput{
-			Kind: r.Recurrence.Kind, Weekdays: r.Recurrence.Weekdays, WeekCount: r.Recurrence.WeekCount,
+			Kind: r.Recurrence.Kind, Count: r.Recurrence.Count,
 		},
 	}
 }

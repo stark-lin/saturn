@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,21 +43,55 @@ func TestHandlerCreatesEmptyEventAggregate(t *testing.T) {
 	}
 }
 
-func TestHandlerCreatesEventUnderAggregateWithDurationAndTags(t *testing.T) {
+func TestHandlerImportsEventAggregateFromMultipartICS(t *testing.T) {
+	service := &fakeEventService{detail: EventAggregateDetail{
+		Aggregate: EventAggregate{RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Imported"}},
+		Events:    []Event{{RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", Metadata: EventMetadata{Title: "Planning"}}},
+	}}
+	handler := NewHandler(service)
+	icsBody := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
+	request := authenticatedICSMultipartRequest(t, "Imported", icsBody)
+	response := httptest.NewRecorder()
+
+	handler.ImportEventAggregate(response, request)
+
+	if response.Code != http.StatusCreated || response.Header().Get("Location") != "/api/calendar/aggregates/CAL-00000001" {
+		t.Fatalf("import response = %d location %q", response.Code, response.Header().Get("Location"))
+	}
+	if service.importTitle != "Imported" || service.importBody != icsBody {
+		t.Fatalf("import input = title %q body %q", service.importTitle, service.importBody)
+	}
+}
+
+func TestHandlerRejectsInvalidICSImportMultipart(t *testing.T) {
+	handler := NewHandler(&fakeEventService{})
+	request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/import-ics", "not multipart")
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+
+	handler.ImportEventAggregate(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid import status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandlerCreatesEventUnderAggregateWithEndTimeAndTags(t *testing.T) {
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 	service := &fakeEventService{detail: EventAggregateDetail{
 		Aggregate: EventAggregate{
 			RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Sprint"}, Tags: []string{"work"},
 		},
 		Events: []Event{{
 			RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-			DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+			EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			Tags: []string{"meeting"},
 		}},
 	}}
 	handler := NewHandler(service)
 	request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/CAL-00000001/events",
-		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"single"}}`)
+		`{"metadata":{"title":"Planning"},"tags":["meeting"],"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","count":3}}`)
 	request.SetPathValue("ref_code", "CAL-00000001")
 	response := httptest.NewRecorder()
 
@@ -64,16 +100,59 @@ func TestHandlerCreatesEventUnderAggregateWithDurationAndTags(t *testing.T) {
 	if response.Code != http.StatusCreated || response.Header().Get("Location") != "/api/calendar/aggregates/CAL-00000001" {
 		t.Fatalf("create response = %d location %q", response.Code, response.Header().Get("Location"))
 	}
-	if service.createEventAggregateRef != "CAL-00000001" || service.createEventInput.DurationMinutes != 45 ||
+	if service.createEventAggregateRef != "CAL-00000001" || !service.createEventInput.EndsAt.Equal(endsAt) ||
+		service.createEventInput.Recurrence.Kind != RecurrenceKindWeek || service.createEventInput.Recurrence.Count != 3 ||
 		len(service.createEventInput.Tags) != 1 || service.createEventInput.Tags[0] != "meeting" {
 		t.Fatalf("create event input = %q %#v", service.createEventAggregateRef, service.createEventInput)
 	}
+	responseBody := response.Body.Bytes()
+	if !bytes.Contains(responseBody, []byte(`"ends_at"`)) || bytes.Contains(responseBody, []byte(`"duration_minutes"`)) {
+		t.Fatalf("event response JSON = %s", responseBody)
+	}
 	var body EventAggregateResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(responseBody, &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Events) != 1 || body.Events[0].DurationMinutes != 45 || body.Events[0].Tags[0] != "meeting" {
+	if len(body.Events) != 1 || !body.Events[0].EndsAt.Equal(endsAt) || body.Events[0].Tags[0] != "meeting" {
 		t.Fatalf("event response = %#v", body.Events)
+	}
+}
+
+func TestHandlerRejectsMissingEndTimeAndLegacyDuration(t *testing.T) {
+	handler := NewHandler(&fakeEventService{})
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing end time",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","recurrence":{"kind":"none"}}`,
+		},
+		{
+			name: "legacy duration field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","duration_minutes":45,"recurrence":{"kind":"none"}}`,
+		},
+		{
+			name: "legacy weekdays field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","weekdays":["mon"],"count":2}}`,
+		},
+		{
+			name: "legacy week count field",
+			body: `{"metadata":{"title":"Planning"},"starts_at":"2026-06-01T09:30:00Z","ends_at":"2026-06-01T10:15:00Z","recurrence":{"kind":"week","week_count":2}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := authenticatedCalendarRequest(http.MethodPost, "/api/calendar/aggregates/CAL-00000001/events", tt.body)
+			request.SetPathValue("ref_code", "CAL-00000001")
+			response := httptest.NewRecorder()
+
+			handler.CreateEvent(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("create response = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+		})
 	}
 }
 
@@ -120,6 +199,7 @@ func TestHandlerFinishesEvent(t *testing.T) {
 
 func TestHandlerListsGetsDeletesAndViewsCalendarResources(t *testing.T) {
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
+	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 	service := &fakeEventService{
 		detail: EventAggregateDetail{
 			Aggregate: EventAggregate{
@@ -127,18 +207,18 @@ func TestHandlerListsGetsDeletesAndViewsCalendarResources(t *testing.T) {
 			},
 			Events: []Event{{
 				RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-				DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+				EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			}},
 		},
 		event: Event{
 			RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-			DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+			EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 		},
 		view: CalendarView{
 			From: startsAt.Add(-time.Hour), To: startsAt.Add(time.Hour),
 			Events: []Event{{
 				RefCode: "CAL-00000002", AggregateRefCode: "CAL-00000001", StartsAt: startsAt,
-				DurationMinutes: 45, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
+				EndsAt: endsAt, Metadata: EventMetadata{Title: "Planning"}, Status: EventStatusScheduled,
 			}},
 			Limit: 10,
 		},
@@ -227,6 +307,8 @@ type fakeEventService struct {
 	event                   Event
 	view                    CalendarView
 	createInput             CreateEventAggregateInput
+	importTitle             string
+	importBody              string
 	createEventAggregateRef string
 	createEventInput        CreateEventInput
 	listQuery               EventAggregateQuery
@@ -243,6 +325,16 @@ func (s *fakeEventService) ListEventAggregates(_ context.Context, _ auth.Princip
 
 func (s *fakeEventService) CreateEventAggregate(_ context.Context, _ auth.Principal, input CreateEventAggregateInput) (EventAggregateDetail, error) {
 	s.createInput = input
+	return s.detail, s.err
+}
+
+func (s *fakeEventService) ImportEventAggregate(_ context.Context, _ auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error) {
+	s.importTitle = input.Title
+	body, err := io.ReadAll(input.Body)
+	if err != nil {
+		return EventAggregateDetail{}, err
+	}
+	s.importBody = string(body)
 	return s.detail, s.err
 }
 
@@ -281,5 +373,27 @@ func (s *fakeEventService) VoidEvent(_ context.Context, _ auth.Principal, _ stri
 
 func authenticatedCalendarRequest(method string, target string, body string) *http.Request {
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+}
+
+func authenticatedICSMultipartRequest(t *testing.T, title string, body string) *http.Request {
+	t.Helper()
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	if err := writer.WriteField("title", title); err != nil {
+		t.Fatalf("write title: %v", err)
+	}
+	filePart, err := writer.CreateFormFile("file", "calendar.ics")
+	if err != nil {
+		t.Fatalf("create ICS file part: %v", err)
+	}
+	if _, err := io.WriteString(filePart, body); err != nil {
+		t.Fatalf("write ICS body: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/calendar/aggregates/import-ics", &requestBody)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
 }

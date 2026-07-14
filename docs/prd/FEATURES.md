@@ -58,7 +58,7 @@ Notes is the main content area of the system, carrying personal notes, technical
 
 ```text
 Notes
-├── Note
+├── nte-obj (stable logical Note)
 │   ├── Private Note
 │   ├── Markdown Note
 │   ├── Technical Note
@@ -66,7 +66,11 @@ Notes
 │   ├── Snippet
 │   ├── Debug Log
 │   ├── Reference Note
-│   └── Revision
+│   └── Soft delete / restore
+├── version-obj
+│   ├── Immutable full snapshot
+│   ├── Independent NTE RefCode
+│   └── Version history / restore by copy
 │
 ├── Tag Projection (via ObjectRef)
 ├── Collection
@@ -123,8 +127,9 @@ Design mindset:
 EventAggregate is the aggregate root.
 EventAggregate can be created empty.
 Event is a specific schedule instance and must be created under an EventAggregate.
-Event only saves the start time and duration.
-Recurrence rules are only expanded into specific Events upon Event creation.
+Event only saves the start and end timestamps.
+Recurrence supports `none` plus count-based `week`, `month`, and `year`, and is expanded into specific Events upon Event creation.
+An authenticated client can also create one EventAggregate from a textual ICS upload. The importer resolves bounded RFC recurrence sets, RDATE / EXDATE, and RECURRENCE-ID overrides into at most 512 concrete Events before atomically creating the aggregate.
 finished / voided Events do not enter the main Calendar view but are retained in the aggregate details.
 ```
 
@@ -135,11 +140,12 @@ Calendar
 ├── EventAggregate
 │   ├── immutable metadata
 │   ├── tags
+│   ├── synchronous ICS import
 │   └── aggregate delete
 │
 ├── Event
 │   ├── starts_at
-│   ├── duration_minutes
+│   ├── ends_at
 │   ├── immutable metadata
 │   ├── tags
 │   └── scheduled -> finished -> voided

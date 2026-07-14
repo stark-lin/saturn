@@ -36,13 +36,17 @@ export function renderTopBanner(options = {}) {
   const statusGroup = document.createElement("div");
   statusGroup.className = "status-group";
   statusGroup.setAttribute("aria-label", "System status");
-  statusGroup.append(
-    renderStatusPill(options.statusLabel ?? "Online", { state: options.statusState ?? "online" }),
-    renderStatusPill(options.systemCode ?? "S-0001", { state: "neutral" }),
-  );
+  const systemStatusPill = renderStatusPill(options.statusLabel ?? "Online", {
+    state: options.statusState ?? "online",
+  });
+  statusGroup.append(systemStatusPill);
   topbar.append(rackToggle, brand, renderGlobalSearch({ onSearch: options.onSearch }), statusGroup);
   return {
     element: topbar,
     rackToggle,
+    setSystemStatus(label, state) {
+      systemStatusPill.dataset.state = state;
+      systemStatusPill.lastChild.textContent = label;
+    },
   };
 }
