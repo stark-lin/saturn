@@ -465,7 +465,7 @@ func TestDeleteSessionRecordsFailedStandaloneAudit(t *testing.T) {
 }
 
 func testActor() auth.Principal {
-	return auth.Principal{ID: 1, Username: "alice", RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
+	return auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 }
 
 type fakeRepository struct {

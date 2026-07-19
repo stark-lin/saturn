@@ -77,14 +77,14 @@ The diagram below expresses the complete domain target structure, including futu
 erDiagram
   users {
     bigint id PK
-    text ref_code UK "USR-00000001"
-    text username UK
+    text ref_code UK "claimed USR-*"
     text email UK "nullable"
     text password_hash
   }
 
   api_keys {
-    text ref_code PK
+    bigint id PK
+    text ref_code UK "claimed KEY-*"
     text name UK
     text key_prefix
     text key_hash UK
@@ -109,7 +109,7 @@ erDiagram
 
   object_refs {
     bigint id PK
-    bigint owner_id FK
+    bigint owner_id "0 = SYS, positive = user anchor"
     text ref_code UK
     text object_type
     bigint object_id
@@ -278,8 +278,8 @@ Explanation:
 
 | Grouping | Relationship Explanation |
 | --- | --- |
-| Identity / Audit | `users` permits only the fixed `USR-00000001` row and stores its unique login name, optional email, and bcrypt password hash; there is no role column. `api_keys` stores immutable unique names, stable `KEY-*` RefCodes, display prefixes, SHA-256 digests, scopes, usage/expiry/revocation timestamps, and never plaintext secrets. Administrator JWTs use Redis session IDs; API keys authenticate directly from their digest. `audit_logs.actor_ref_code` stores only `USR-00000001`, `KEY-*`, or `SYS-00000000`, with no foreign key so historical evidence survives key revocation. The audit table rejects `UPDATE`, `DELETE`, and `TRUNCATE`. |
-| ObjectRef | `object_refs` is the globally unified object registry and the authoritative source for `ref_code` and cross-module `title`, `tags`, and current `status` projections. `object_refs.id` is the cross-module universal object ID; `ref_code` is the stable, readable reference code for users, search, and LLMs; `object_type/object_id` map to the source business table. The business source and state transition rules of title/tag/status are still the responsibility of the source business module; business reads must still return to the source module's service / facade. |
+| Identity / Audit | `users` permits only one row and stores its globally claimed `USR-*` RefCode, optional email, and bcrypt password hash; there is no username or role column. `api_keys` stores an internal ID, immutable unique names, globally claimed `KEY-*` RefCodes, display prefixes, SHA-256 digests, scopes, usage/expiry/revocation timestamps, and never plaintext secrets. Administrator JWTs use Redis session IDs; API keys authenticate directly from their digest. `audit_logs.actor_ref_code` stores `USR-*`, `KEY-*`, or `SYS-00000000`, with no foreign key so historical evidence survives key revocation. The audit table rejects `UPDATE`, `DELETE`, and `TRUNCATE`. |
+| ObjectRef | `object_refs` is the globally unified object registry and the authoritative claim registry for readable codes and cross-module `title`, `tags`, and current `status` projections. `user` and `api_key` entries use the reserved system owner `owner_id = 0` (`SYS`); normal business entries keep a positive singleton user anchor. The owner column therefore has no `users` foreign key. Auth source tables retain the claimed actor RefCode as a compatibility exception for JWT/session/credential/audit paths. Identity rows are excluded from shared business metadata endpoints. `object_refs.id` is the cross-module universal object ID; `object_type/object_id` map to the source table. Business reads must still return to the source module's service / facade. |
 | Files | `file_collections` are similar to Accounting ledgers and own multiple immutable `files`. Both Collection and File are registered as `FIL-*` ObjectRefs, using the `file_collection` and `file` object_type respectively. File blobs point to `./objects/{FILE_REFCODE}/blob` in the local FS via `object_key`, and must be verified before downloading using the `sha256` and `blake3` in the metadata. When a Collection is deleted, the service cascades through the unified File delete process one by one and records the cascade reason. |
 | Notes | `notes` is the mutable `nte-obj` source: singleton instance anchor, current-version pointer, and timestamps; it stores no title/body. The legacy `deleted_at` column remains in the historical schema but is unused by runtime behavior. `note_versions` contains immutable full snapshots and parent/version ordering metadata. Both tables map to independent `NTE-*` ObjectRefs through `nte-obj` and `version-obj`. Content updates insert a new version and advance the pointer; content restoration is not exposed. Deleting a Note permanently removes the source row, all snapshots, and all associated ObjectRefs in one transaction. Collections and links remain outside the current API. |
 | Accounting | `accounts` are ledgers, and `transactions` are directly subordinated immutable entries. Both Account and Transaction are registered as `ACC-*` objects and project their tags to ObjectRef; a Transaction only allows `posted -> voided`, and single entries cannot be deleted. When deleting an Account, transactions are cascade-deleted following ledger deletion semantics, while the service cleans up corresponding object refs in the same transaction. `accounts.balance_cents` is a cache recalculated only from posted entries, and balance-related writes lock the account row first. |
@@ -293,14 +293,14 @@ Explanation:
 erDiagram
   users {
     bigint id PK
-    text ref_code UK "USR-00000001"
-    text username UK
+    text ref_code UK "claimed USR-*"
     text email UK "nullable"
     text password_hash
   }
 
   api_keys {
-    text ref_code PK
+    bigint id PK
+    text ref_code UK "claimed KEY-*"
     text name UK
     text key_prefix
     text key_hash UK
@@ -313,7 +313,7 @@ erDiagram
 
   object_refs {
     bigint id PK
-    bigint owner_id FK
+    bigint owner_id "0 = SYS, positive = user anchor"
     text ref_code UK
     text object_type
     bigint object_id
@@ -433,10 +433,10 @@ object_refs.status stores the current status projection for registered business 
 object_refs.title stores the cross-module title projection for registered business objects
 object_refs.tags stores the cross-module tag projection for registered business objects
 status semantics and transitions are owned by source business modules; status does not grant access
-owner_id is a legacy-named relational anchor to the singleton administrator row; it is not an authorization or ownership field
+owner_id is a registry anchor, not an authorization field; 0 means SYS for auth identities and positive values anchor business objects to the singleton administrator
 object_refs.id is the global object id for cross-module relations
 ref_code is the human-readable object reference for UI, search, and LLM
-object_refs is the authoritative source of ref_code and metadata title/tags/status projections
+object_refs is the authoritative claim registry for ref_code and metadata title/tags/status projections; auth source rows retain actor RefCodes for credential/session/audit compatibility
 source business modules own their domain title/tag source rules and synchronize projections in the same business operation
 ```
 
@@ -472,9 +472,10 @@ Modeling boundaries:
 ```text
 object_refs is the global object registry
 object_refs.id is the cross-module generic object ID
-object_refs.ref_code is the readable reference code for users and LLMs, and is the sole authoritative source of ref_code
+object_refs.ref_code is the globally claimed readable reference code for users and LLMs
 object_refs.title/tags/status are the display projections for cross-module metadata; tags use TEXT[]
-ref_code prefixes identify the module: NTE / FIL / ACC / CAL / LLM
+ref_code prefixes identify identity or module namespaces: USR / KEY / NTE / FIL / ACC / CAL / LLM
+user and api_key identity rows use owner_id = 0 (SYS) and are excluded from shared business metadata endpoints
 multiple object_types within the same module are distinguished by the object_type field, e.g., Calendar uses event_aggregate and event
 object_refs does not replace source business tables
 business table relationships can still use internal ids

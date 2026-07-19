@@ -25,10 +25,6 @@ export function renderLoginPage(options = {}) {
   const form = document.createElement("form");
   form.className = "login-form";
 
-  const username = labeledInput("Username", "username", "text");
-  username.input.autocomplete = "username";
-  username.input.placeholder = "admin";
-
   const password = labeledInput("Password", "password", "password");
   password.input.autocomplete = "current-password";
   password.input.placeholder = "••••••••";
@@ -48,7 +44,7 @@ export function renderLoginPage(options = {}) {
   note.className = "login-note";
   note.textContent = "Local access only";
 
-  form.append(username.label, password.label, error, submit);
+  form.append(password.label, error, submit);
   panel.append(brand, form, note);
 
   form.addEventListener("submit", async (event) => {
@@ -56,7 +52,7 @@ export function renderLoginPage(options = {}) {
     error.hidden = true;
     submit.disabled = true;
     try {
-      await options.onSubmit?.(username.input.value, password.input.value);
+      await options.onSubmit?.(password.input.value);
     } catch (submitError) {
       error.textContent = submitError.message;
       error.hidden = false;

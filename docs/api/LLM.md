@@ -342,7 +342,7 @@ Reference resolution flow:
 3. The business module service reads from shared instance scope using the original principal.
 4. LLM saves a snapshot of the reference to llm_request_references.
 5. LLM stitches the authorized payload into context_json.
-6. LLM writes an audit READ for each successfully read reference, using the original principal's `USR-00000001` or `KEY-*` actor RefCode.
+6. LLM writes an audit READ for each successfully read reference, using the original principal's claimed `USR-*` or `KEY-*` actor RefCode.
 ```
 
 If a single resource does not exist or access is denied, it returns:

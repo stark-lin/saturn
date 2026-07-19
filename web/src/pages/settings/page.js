@@ -233,7 +233,6 @@ function renderAccountOverview(context) {
     note: "Current authenticated principal and available account operations.",
     children: [renderDetailList([
       { label: "RefCode", value: user.refcode ?? "unknown" },
-      { label: "Username", value: user.username ?? "unknown" },
       { label: "Email", value: user.email || "empty" },
       { label: "Principal", value: user.kind ?? "administrator" },
       { label: "Password", value: "current user password change requires the current password" },

@@ -6,6 +6,8 @@ import "time"
 type ObjectType string
 
 const (
+	ObjectTypeUser           ObjectType = "user"
+	ObjectTypeAPIKey         ObjectType = "api_key"
 	ObjectTypeNote           ObjectType = "nte-obj"
 	ObjectTypeNoteVersion    ObjectType = "version-obj"
 	ObjectTypeFileCollection ObjectType = "file_collection"
@@ -21,12 +23,17 @@ const (
 type Module string
 
 const (
+	ModulePlatform   Module = "platform"
 	ModuleFiles      Module = "files"
 	ModuleNotes      Module = "notes"
 	ModuleAccounting Module = "accounting"
 	ModuleCalendar   Module = "calendar"
 	ModuleLLM        Module = "llm"
 )
+
+// SystemOwnerID marks registry entries owned by the Saturn instance itself.
+// User and API key references use this owner instead of a login-capable user.
+const SystemOwnerID int64 = 0
 
 type ObjectRef struct {
 	ID         int64

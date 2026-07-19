@@ -5,28 +5,27 @@
 Saturn is a single-instance system with exactly one human administrator and any number of named API keys.
 
 ```text
-administrator  USR-00000001
+administrator  USR-xxxxxxxx
 API key        KEY-xxxxxxxx
 system         SYS-00000000
 ```
 
-There is no registration, invitation, user list, user role, resource sharing, or user-to-user data isolation. All business data belongs to the Saturn instance. Existing `owner_id` columns are internal relational anchors to the singleton administrator row; they are not ownership or authorization boundaries and are never compared with a programmatic caller identity.
+There is no registration, invitation, user list, user role, resource sharing, or user-to-user data isolation. All business data belongs to the Saturn instance. Business-table `owner_id` columns are internal relational anchors to the singleton administrator row; they are not authorization boundaries and are never compared with a programmatic caller identity. In `object_refs`, the reserved `owner_id = 0` means the `SYS` owner for administrator and API-key identity rows.
 
 ## 2. Administrator Authentication
 
-The administrator signs in to the Web UI with the unique username and password. The development bootstrap creates `admin/admin` only when the singleton row does not exist. Production deployments must change this password and the JWT secret.
+The administrator signs in to the Web UI with only a password; the server always targets the singleton administrator. The development bootstrap creates the singleton administrator with default password `admin` only when the row does not exist. Production deployments must change this password and the JWT secret.
 
-Successful login returns a short-lived JWT. The JWT subject is the fixed administrator RefCode, not a database ID or role. Redis stores the active browser-session token ID; logout removes it. Administrator responses expose:
+Successful login returns a short-lived JWT. The JWT subject is the administrator's globally claimed `USR-*` RefCode, not a database ID or role. Redis stores the active browser-session token ID; logout removes it. Administrator responses expose:
 
 ```json
 {
   "refcode": "USR-00000001",
-  "kind": "administrator",
-  "username": "admin"
+  "kind": "administrator"
 }
 ```
 
-The administrator may update only this account's username, optional email, and password. No endpoint can create another human account.
+The administrator identity has no username. The administrator may update only this account's optional email and password. No endpoint can create another human account.
 
 ## 3. API Key Authentication
 
@@ -36,7 +35,7 @@ Programmatic clients use:
 Authorization: Bearer sat_sk_<secret>
 ```
 
-The server generates the secret and returns it exactly once. PostgreSQL stores only its SHA-256 digest and a non-secret display prefix. A key is rejected when it is unknown, revoked, or expired. Successful authentication updates `last_used_at` and creates a principal whose data anchor is the singleton administrator ID but whose actor identity is the key's own `KEY-*` RefCode.
+The server first claims the key's `KEY-*` RefCode from the global ObjectRef sequence, then generates the secret and returns it exactly once. PostgreSQL stores only its SHA-256 digest and a non-secret display prefix. The source row and its system-owned ObjectRef registration commit atomically. A key is rejected when it is unknown, revoked, or expired. Successful authentication updates `last_used_at` and creates a principal whose data anchor is the singleton administrator ID but whose actor identity is the key's own `KEY-*` RefCode.
 
 Supported scopes:
 
@@ -60,7 +59,7 @@ Resource state remains a business rule. For example, `voided`, `finished`, and i
 Audit rows and business source fields store a stable actor RefCode only:
 
 ```text
-USR-00000001  administrator action
+USR-00000001  administrator action (clean-schema example)
 KEY-4F8A2C10   API key action
 SYS-00000000   system or unidentified authentication action
 ```

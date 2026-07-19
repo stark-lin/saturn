@@ -4,7 +4,7 @@
 
 Platform owns authentication, API key lifecycle, ObjectRef metadata queries, audit-log queries, and the shared SSE transport.
 
-Saturn has one administrator (`USR-00000001`) and multiple API keys (`KEY-*`). Browser login returns a JWT backed by a Redis session. Programmatic clients use an API key directly. Both use:
+Saturn has one administrator (`USR-*`) and multiple API keys (`KEY-*`). Both identity kinds claim their RefCodes from the global ObjectRef sequence and register system-owned (`SYS`, stored as `owner_id = 0`) rows. A clean schema normally assigns `USR-00000001` to the administrator. Browser login returns a JWT backed by a Redis session. Programmatic clients use an API key directly. Both use:
 
 ```http
 Authorization: Bearer <credential>
@@ -44,7 +44,6 @@ Content-Type: application/json
 
 ```json
 {
-  "username": "admin",
   "password": "admin"
 }
 ```
@@ -57,13 +56,12 @@ Successful response:
   "expires_at": "2026-07-19T11:00:00Z",
   "user": {
     "refcode": "USR-00000001",
-    "kind": "administrator",
-    "username": "admin"
+    "kind": "administrator"
   }
 }
 ```
 
-The JWT subject is `USR-00000001`; it does not contain a role or database user ID. Invalid credentials return `401/invalid_credentials` without revealing whether the username exists.
+Login always targets the singleton administrator and does not accept a username. The JWT subject is the administrator's claimed `USR-*` RefCode; it does not contain a role or database user ID. An invalid password returns `401/invalid_credentials`.
 
 ### 3.2 Current Principal
 
@@ -82,7 +80,7 @@ The JWT subject is `USR-00000001`; it does not contain a role or database user I
 
 ### 3.3 Profile and Password
 
-`PATCH /api/auth/me` accepts optional `username` and `email`; at least one may be supplied. `PATCH /api/auth/me/password` accepts:
+`PATCH /api/auth/me` accepts an optional `email`. Administrator identity has no username field. `PATCH /api/auth/me/password` accepts:
 
 ```json
 {
@@ -131,7 +129,7 @@ Successful creation returns the complete secret exactly once:
 
 The web client presents this response in a one-time modal with a copy action. Closing the modal clears and removes the complete secret from the current page; only the key metadata remains, and the modal cannot be reopened.
 
-The server generates 256 random secret bits, stores only the lowercase SHA-256 digest plus display prefix, and never provides a secret-recovery endpoint.
+The server claims the key's `KEY-*` RefCode from the same global sequence used by all ObjectRefs, then generates 256 random secret bits, stores only the lowercase SHA-256 digest plus display prefix, and never provides a secret-recovery endpoint. Source creation, ObjectRef registration, and the CREATE audit commit atomically.
 
 ### 4.2 List
 
@@ -163,7 +161,7 @@ The server generates 256 random secret bits, stores only the lowercase SHA-256 d
 
 ## 5. ObjectRef Metadata
 
-All metadata routes require `data:read` and operate on the shared instance collection. Responses contain no database IDs or `owner_id`.
+All metadata routes require `data:read` and operate on the shared instance collection. Responses contain no database IDs or `owner_id`. System-owned `user` and `api_key` registry rows are intentionally excluded from these endpoints; API key metadata remains administrator-only.
 
 Exact response:
 
@@ -189,7 +187,7 @@ Exact response:
 | Parameter | Rule |
 | --- | --- |
 | `target_ref_code` | Valid business, API key, administrator, or system RefCode |
-| `actor_ref_code` | `USR-00000001`, `KEY-*`, or `SYS-00000000` |
+| `actor_ref_code` | `USR-*`, `KEY-*`, or `SYS-00000000` |
 | `action` | `CREATE`, `READ`, `UPDATE`, `DELETE`, `EXPORT`, `LOGIN`, `LOGOUT` |
 | `result` | `SUCCESS`, `FAILED`, `DENIED` |
 | `limit` | 1–100, default 50 |

@@ -38,10 +38,10 @@ export async function deleteJSON(path) {
   return requestJSON(path, { method: "DELETE" });
 }
 
-export async function login(username, password) {
+export async function login(password) {
   const result = await requestJSON("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ password }),
   });
   window.sessionStorage.setItem(accessTokenKey, result.token);
   return result;

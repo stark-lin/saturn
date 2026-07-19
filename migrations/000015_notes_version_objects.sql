@@ -8,6 +8,7 @@ WHERE object_type = 'note';
 
 ALTER TABLE object_refs ADD CONSTRAINT object_refs_object_type_check CHECK (
     object_type IN (
+        'user', 'api_key',
         'nte-obj', 'version-obj',
         'file_collection', 'file',
         'event_aggregate', 'event',
@@ -17,7 +18,9 @@ ALTER TABLE object_refs ADD CONSTRAINT object_refs_object_type_check CHECK (
 );
 
 ALTER TABLE object_refs ADD CONSTRAINT object_refs_module_prefix_check CHECK (
-    (object_type IN ('nte-obj', 'version-obj') AND ref_code LIKE 'NTE-%')
+    (object_type = 'user' AND ref_code LIKE 'USR-%')
+    OR (object_type = 'api_key' AND ref_code LIKE 'KEY-%')
+    OR (object_type IN ('nte-obj', 'version-obj') AND ref_code LIKE 'NTE-%')
     OR (object_type IN ('file_collection', 'file') AND ref_code LIKE 'FIL-%')
     OR (object_type IN ('event_aggregate', 'event') AND ref_code LIKE 'CAL-%')
     OR (object_type IN ('account', 'transaction') AND ref_code LIKE 'ACC-%')

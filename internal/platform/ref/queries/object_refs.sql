@@ -24,6 +24,7 @@ WHERE ref_code = $1;
 -- name: ListRecentObjectRefs :many
 SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
+WHERE object_type IN ('nte-obj', 'version-obj', 'file_collection', 'file', 'event_aggregate', 'event', 'account', 'transaction', 'llm_session', 'llm_request')
 ORDER BY updated_at DESC, ref_code DESC
 LIMIT $1;
 

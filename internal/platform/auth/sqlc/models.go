@@ -10,6 +10,7 @@ import (
 )
 
 type ApiKey struct {
+	ID         int64
 	RefCode    string
 	Name       string
 	KeyPrefix  string

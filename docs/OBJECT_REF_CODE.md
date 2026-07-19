@@ -9,11 +9,13 @@ It is not a database primary key and does not replace internal relationships bet
 Examples:
 
 ```text
-NTE-00000001
-FIL-00000002
-ACC-00000003
-CAL-00000004
-LLM-00000005
+USR-00000001
+KEY-00000002
+NTE-00000003
+FIL-00000004
+ACC-00000005
+CAL-00000006
+LLM-00000007
 ```
 
 Audit logs additionally retain a system-level target code:
@@ -27,6 +29,8 @@ SYS-00000000
 Where:
 
 ```text
+USR stands for a human user identity
+KEY stands for an API key identity
 NTE stands for the Notes module
 FIL stands for the Files module
 ACC stands for the Accounting module
@@ -71,7 +75,7 @@ source table id          internal primary key
 object_refs.ref_code     external readable reference code
 ```
 
-The source business table does not store a duplicate `ref_code`. When a module query needs to expose the reference code, it joins `object_refs`; search indexes may store a denormalized copy; cross-module generic relations use `object_refs.id`. `ref_code` is mainly used for display, metadata queries, search, LLM, cross-module referencing, and human communication.
+Business source tables do not store a duplicate `ref_code`. When a business module query needs to expose the reference code, it joins `object_refs`; search indexes may store a denormalized copy; cross-module generic relations use `object_refs.id`. Auth is an intentional compatibility exception: `users` and `api_keys` retain their claimed `ref_code` because JWTs, sessions, credential lookup, and append-only audit rows use actor RefCodes directly, while `object_refs` remains the global claim registry. `ref_code` is mainly used for display, metadata queries, search, LLM, cross-module referencing, and human communication.
 
 Conceptually, there is a global registry recording the mapping between reference codes and real objects:
 
@@ -83,6 +87,8 @@ object_refs
 ├── title / tags / status
 └── created_at / updated_at
 ```
+
+`owner_id = 0` is the reserved system owner (`SYS`) for `user` and `api_key` identity entries. Positive owner IDs continue to identify the administrator that owns normal business objects. The system owner is a registry sentinel, not a login-capable row in `users`.
 
 This allows the system to resolve through a unified entry point:
 
@@ -106,6 +112,8 @@ CAL-00000008 -> event
 Currently registered object type matrix:
 
 ```text
+user             USR  system-owned
+api_key          KEY  system-owned
 nte-obj          NTE
 version-obj      NTE
 file_collection  FIL
@@ -117,6 +125,8 @@ event            CAL
 llm_session      LLM
 llm_request      LLM
 ```
+
+The two auth identity types participate in global code claiming and internal resolution, but are excluded from the shared business ObjectRef metadata endpoints. API key names therefore remain visible only through administrator-only auth APIs.
 
 Objects like RSS Items can extend the type matrix when their real CRUD workflows are implemented. There is no need to assign ref codes to internal relationship tables, configuration items, or index rows, such as:
 
@@ -158,7 +168,7 @@ Support LLM referencing
 
 Business objects are created by clients calling the server create endpoint of the owning module. Clients must not generate, reserve, or submit `ref_code` in the create payload, nor should they directly call a standalone number-generation endpoint.
 
-Upon receiving a create request, the business module service should, within the same creation operation, create the source record, claim the next unified `ref_code` from `platform/ref`, register the reference, and record the audit event; only upon successful response is the claimed `ref_code` returned to the client. If the transaction fails, no addressable new resource exists externally; the underlying global sequence allows gaps due to transaction rollbacks, and numbers must not be reused.
+Upon receiving a create request, the owning service claims the next unified `ref_code` from `platform/ref` and, within the same mutation transaction, creates the source record, registers the reference, and records any required audit event; only upon successful response is the claimed `ref_code` returned to the client. Administrator bootstrap follows the same rule for `USR-*`, and API key creation follows it for `KEY-*`; both registry rows use the `SYS` owner. If the transaction fails, no addressable new resource exists externally; the underlying global sequence allows gaps due to transaction rollbacks, and numbers must not be reused.
 
 When updating an object's title, tags, status, or user-visible content that affects the display of the last updated time, the source business module synchronously updates the `object_refs` display projection in the same business operation. Hard-deleted objects remove their ObjectRefs. Notes deletion removes the `nte-obj` plus every immutable `version-obj` belonging to it in the same transaction.
 

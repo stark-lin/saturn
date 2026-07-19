@@ -162,7 +162,7 @@ func metadataSearchStatement(query MetadataSearchQuery) (string, []any) {
 	var statement strings.Builder
 	statement.WriteString(`SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
-WHERE TRUE`)
+WHERE object_type IN ('nte-obj', 'version-obj', 'file_collection', 'file', 'event_aggregate', 'event', 'account', 'transaction', 'llm_session', 'llm_request')`)
 	arguments := make([]any, 0, 8)
 	addArgument := func(value any) string {
 		arguments = append(arguments, value)

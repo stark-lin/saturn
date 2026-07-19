@@ -3,6 +3,8 @@ package auth
 
 import "slices"
 
+// AdministratorRefCode is the clean-schema administrator's first global claim.
+// Runtime authorization accepts any valid USR RefCode loaded from the registry.
 const AdministratorRefCode = "USR-00000001"
 
 type PrincipalKind string
@@ -22,13 +24,12 @@ const (
 var SupportedAPIKeyScopes = []ScopeName{ScopeDataRead, ScopeDataWrite}
 
 type Principal struct {
-	ID       int64         `json:"-"`
-	RefCode  string        `json:"refcode"`
-	Kind     PrincipalKind `json:"kind"`
-	Username string        `json:"username,omitempty"`
-	Email    string        `json:"email,omitempty"`
-	Name     string        `json:"name,omitempty"`
-	Scopes   []ScopeName   `json:"scopes,omitempty"`
+	ID      int64         `json:"-"`
+	RefCode string        `json:"refcode"`
+	Kind    PrincipalKind `json:"kind"`
+	Email   string        `json:"email,omitempty"`
+	Name    string        `json:"name,omitempty"`
+	Scopes  []ScopeName   `json:"scopes,omitempty"`
 }
 
 func (p Principal) IsZero() bool {

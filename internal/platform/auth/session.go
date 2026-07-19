@@ -35,7 +35,7 @@ func NewRedisSessionStore(client *platformredis.Client) *RedisSessionStore {
 }
 
 func (s *RedisSessionStore) Save(ctx context.Context, session Session) error {
-	if s == nil || s.client == nil || session.ID == "" || session.AdministratorRefCode != AdministratorRefCode {
+	if s == nil || s.client == nil || session.ID == "" || !ValidUserRefCode(session.AdministratorRefCode) {
 		return fmt.Errorf("valid session and redis client are required")
 	}
 	ttl := time.Until(session.ExpiresAt)

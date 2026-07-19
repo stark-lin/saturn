@@ -42,8 +42,8 @@ function renderLogin() {
   disposeAuthenticatedView();
   root.classList.add("login-root");
   root.replaceChildren(renderLoginPage({
-    async onSubmit(username, password) {
-      const session = await login(username, password);
+    async onSubmit(password) {
+      const session = await login(password);
       await renderAuthenticated(session.user);
     },
   }));

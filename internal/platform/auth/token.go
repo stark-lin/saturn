@@ -30,14 +30,12 @@ type IssuedToken struct {
 
 type TokenClaims struct {
 	RefCode   string
-	Username  string
 	TokenID   string
 	ExpiresAt time.Time
 }
 
 type jwtPayload struct {
 	Subject   string `json:"sub"`
-	Username  string `json:"username"`
 	TokenID   string `json:"jti"`
 	IssuedAt  int64  `json:"iat"`
 	ExpiresAt int64  `json:"exp"`
@@ -54,7 +52,7 @@ func NewTokenManager(secret string, ttl time.Duration) (*TokenManager, error) {
 }
 
 func (m *TokenManager) Issue(principal Principal) (IssuedToken, error) {
-	if m == nil || principal.IsZero() || !principal.IsAdministrator() || principal.ActorRefCode() != AdministratorRefCode || strings.TrimSpace(principal.Username) == "" {
+	if m == nil || principal.IsZero() || !principal.IsAdministrator() || !ValidUserRefCode(principal.ActorRefCode()) {
 		return IssuedToken{}, ErrInvalidToken
 	}
 
@@ -66,7 +64,6 @@ func (m *TokenManager) Issue(principal Principal) (IssuedToken, error) {
 	expiresAt := now.Add(m.ttl)
 	payload := jwtPayload{
 		Subject:   principal.ActorRefCode(),
-		Username:  principal.Username,
 		TokenID:   tokenID,
 		IssuedAt:  now.Unix(),
 		ExpiresAt: expiresAt.Unix(),
@@ -104,7 +101,7 @@ func (m *TokenManager) Verify(token string) (TokenClaims, error) {
 	if err := decodeJWTPart(parts[1], &payload); err != nil {
 		return TokenClaims{}, ErrInvalidToken
 	}
-	if payload.Subject != AdministratorRefCode || strings.TrimSpace(payload.TokenID) == "" || strings.TrimSpace(payload.Username) == "" {
+	if !ValidUserRefCode(payload.Subject) || strings.TrimSpace(payload.TokenID) == "" {
 		return TokenClaims{}, ErrInvalidToken
 	}
 	expiresAt := time.Unix(payload.ExpiresAt, 0).UTC()
@@ -113,7 +110,6 @@ func (m *TokenManager) Verify(token string) (TokenClaims, error) {
 	}
 	return TokenClaims{
 		RefCode:   payload.Subject,
-		Username:  payload.Username,
 		TokenID:   payload.TokenID,
 		ExpiresAt: expiresAt,
 	}, nil

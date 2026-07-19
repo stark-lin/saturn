@@ -316,8 +316,9 @@ platform/ref does not own business module rules
 platform/ref does not directly read or modify business module repos
 Reading real objects still goes through the corresponding module's service / facade
 Permission judgments are still executed by business services and platform/auth
-object_refs is the authoritative source for ref_code and title/tags/status metadata projections; source business tables do not duplicate saving ref_code
-Module prefixes are fixed to NTE / FIL / ACC / CAL / LLM; objects of the same module are differentiated by object_type
+object_refs is the authoritative global claim registry for ref_code and title/tags/status metadata projections; auth source tables retain their claimed actor RefCodes for JWT/session/credential/audit compatibility
+Identity prefixes are USR / KEY and business module prefixes are NTE / FIL / ACC / CAL / LLM; objects of the same module are differentiated by object_type
+user and api_key registry rows are owned by SYS through owner_id = 0 and are excluded from shared business metadata endpoints
 Code suffixes are generated as 8-character uppercase Hex by a global PostgreSQL sequence; numbers are not reused
 GET /api/platform/search?ref_code=<code> returns shared instance metadata JSON containing title/tags/status
 ```

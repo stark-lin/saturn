@@ -143,11 +143,11 @@ func validateEvent(event Event) error {
 }
 
 func validActorRefCode(value string) bool {
-	return value == auth.AdministratorRefCode || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value)
+	return auth.ValidUserRefCode(value) || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value)
 }
 
 func validTargetRefCode(value string) bool {
-	if value == auth.AdministratorRefCode || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value) {
+	if auth.ValidUserRefCode(value) || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value) {
 		return true
 	}
 	return ref.CodeMatchesModule(value, ref.ModuleAccounting) ||

@@ -17,7 +17,7 @@ import (
 func TestServiceRejectsInvalidActorRefCode(t *testing.T) {
 	service := NewService(&fakeRepository{}, platformdb.NoopTransactionRunner{})
 	for _, event := range []Event{
-		{ActorRefCode: "USR-00000002", Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{ActorRefCode: "USR-bad", Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 		{ActorRefCode: "KEY-bad", Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 		{Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 	} {
@@ -74,7 +74,7 @@ func TestServiceRecordRejectsInvalidActionResultTargetAndSource(t *testing.T) {
 		{ActorRefCode: auth.AdministratorRefCode, Action: Action("BAD"), TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: Result("BAD")},
 		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "bad", Result: ResultSuccess},
-		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "USR-00000002", Result: ResultSuccess},
+		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "USR-bad", Result: ResultSuccess},
 		{ActorRefCode: SystemTargetRefCode, Action: ActionLogin, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 		{ActorRefCode: SystemTargetRefCode, Action: ActionExport, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess, SourceIP: " "},
 	}

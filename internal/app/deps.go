@@ -53,7 +53,10 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 		return Dependencies{}, fmt.Errorf("bootstrap database schema: %w", err)
 	}
 	authRepo := auth.NewSQLRepository(database.DB)
-	if err := auth.EnsureDevelopmentAdmin(ctx, authRepo); err != nil {
+	transactionRunner := platformdb.SQLTransactionRunner{DB: database.DB}
+	referenceService := ref.NewService(ref.NewSQLRepository(database.DB))
+	authReferences := authIdentityReferenceRegistry{references: referenceService}
+	if err := auth.EnsureDevelopmentAdmin(ctx, authRepo, transactionRunner, authReferences); err != nil {
 		_ = redisClient.Close()
 		_ = database.Close()
 		return Dependencies{}, err
@@ -65,7 +68,6 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 		_ = database.Close()
 		return Dependencies{}, fmt.Errorf("configure authentication tokens: %w", err)
 	}
-	transactionRunner := platformdb.SQLTransactionRunner{DB: database.DB}
 	auditService := audit.NewService(audit.NewSQLRepository(database.DB), transactionRunner)
 
 	return Dependencies{
@@ -74,9 +76,9 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 		Events:     httpx.NewBroker(),
 		Logger:     log,
 		Redis:      redisClient,
-		Auth:       auth.NewServiceWithTransactions(authRepo, auth.NewRedisSessionStore(redisClient), tokenManager, transactionRunner, auditService),
+		Auth:       auth.NewServiceWithTransactions(authRepo, auth.NewRedisSessionStore(redisClient), tokenManager, transactionRunner, authReferences, auditService),
 		Audits:     auditService,
-		References: ref.NewService(ref.NewSQLRepository(database.DB)),
+		References: referenceService,
 		StartedAt:  time.Now().UTC(),
 	}, nil
 }

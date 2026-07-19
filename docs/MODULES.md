@@ -134,6 +134,7 @@ Config owns runtime configuration loading and validation
 Search currently owns ObjectRef metadata HTTP handlers and compatibility metadata lookup
 ObjectRef owns readable reference code generation and shared title/status metadata projections
 ObjectRef owns unified ref_code, title, tags and status metadata projections
+Auth claims USR / KEY codes through ObjectRef and registers both identity types with the SYS owner
 Storage owns local filesystem storage abstraction, usage and diagnostics
 ```
 
@@ -150,6 +151,8 @@ platform search delegates metadata reads to platform/ref
 `Platform/ObjectRef` is a unified object reference code capability at the conceptual layer. It provides short, stable, readable `ref_code` for first-class business objects per business module, and maintains `title` and `status` projections used for shared instance metadata queries. These are used for administrator referencing, API clients, LLM calls, search results, and cross-module associations. It does not replace internal database `id`s, does not directly own business rules, and does not bypass business module services / facades. See [OBJECT_REF_CODE.md](OBJECT_REF_CODE.md) for a detailed summary.
 
 `ObjectRef` maintains unified `ref_code`, `title`, `tags`, and `status` metadata projections. Platform metadata returns `object_refs.tags` as an array of `tags` together with the object's `ref_code` and `title`; tagless objects return an empty array. Notes, Files, Accounting, Calendar, and LLM can use tags, but do not each own independent tag relationship tables.
+
+Administrator and API-key identities claim `USR-*` and `KEY-*` codes from the same global sequence and register `user` / `api_key` rows with `object_refs.owner_id = 0` (`SYS`). These identity rows support stable actor references but are excluded from shared business metadata lookup, recent, and search responses.
 
 ---
 

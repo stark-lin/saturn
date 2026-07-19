@@ -1,14 +1,14 @@
 -- This migration moves LLM request queue claiming into PostgreSQL.
 ALTER TABLE llm_requests
 ADD COLUMN IF NOT EXISTS actor_ref_code TEXT CHECK (
-    actor_ref_code = 'USR-00000001'
+    actor_ref_code ~ '^USR-[0-9A-F]{8}$'
     OR actor_ref_code ~ '^KEY-[0-9A-F]{8}$'
 );
 
 ALTER TABLE llm_requests DISABLE TRIGGER llm_requests_single_response_write;
 
 UPDATE llm_requests
-SET actor_ref_code = 'USR-00000001'
+SET actor_ref_code = (SELECT ref_code FROM users LIMIT 1)
 WHERE actor_ref_code IS NULL;
 
 ALTER TABLE llm_requests

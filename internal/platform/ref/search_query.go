@@ -77,7 +77,7 @@ func normalizeMetadataSearchObjectTypes(values []ObjectType) ([]ObjectType, erro
 		if objectType == "" {
 			return nil, ErrInvalidMetadataSearchQuery
 		}
-		if _, ok := objectDefinitions[objectType]; !ok {
+		if !isMetadataObjectType(objectType) {
 			return nil, ErrInvalidMetadataSearchQuery
 		}
 		if _, exists := seen[objectType]; exists {

@@ -172,12 +172,11 @@ Expected response shape:
 After the development schema is initialized, Saturn creates a default local development account:
 
 ```text
-username: admin
+administrator: USR-00000001 (selected automatically at login)
 password: admin
-role: superuser
 ```
 
-The default account and default password are for local development only. `docker/config.json` keeps a development JWT secret template, and if `config.json` is missing on first startup Saturn generates a new config file with a random `auth.jwt_secret`. All of them must be changed or replaced before any real deployment.
+The login page only asks for the password. The default account and default password are for local development only. `docker/config.json` keeps a development JWT secret template, and if `config.json` is missing on first startup Saturn generates a new config file with a random `auth.jwt_secret`. All of them must be changed or replaced before any real deployment.
 
 ### Run the Go Server Directly
 
@@ -538,12 +537,11 @@ curl http://localhost:8080/healthz
 开发 schema 初始化后，Saturn 会创建一个本地开发默认账号：
 
 ```text
-username: admin
+管理员：USR-00000001（登录时自动选定）
 password: admin
-role: superuser
 ```
 
-默认账号和默认密码只适合本地开发。`docker/config.json` 保留的是开发用 JWT secret 模板；如果首次启动时缺少 `config.json`，Saturn 会生成一个包含随机 `auth.jwt_secret` 的新配置文件。真实部署前，这些内容都必须替换。
+登录页只需要输入密码。默认账号和默认密码只适合本地开发。`docker/config.json` 保留的是开发用 JWT secret 模板；如果首次启动时缺少 `config.json`，Saturn 会生成一个包含随机 `auth.jwt_secret` 的新配置文件。真实部署前，这些内容都必须替换。
 
 ### 直接运行 Go Server
 

@@ -11,6 +11,8 @@ func TestFormatCodeUsesFixedTypePrefixesAndGlobalHexSequence(t *testing.T) {
 		objectType ObjectType
 		want       string
 	}{
+		{objectType: ObjectTypeUser, want: "USR-0000002A"},
+		{objectType: ObjectTypeAPIKey, want: "KEY-0000002A"},
 		{objectType: ObjectTypeNote, want: "NTE-0000002A"},
 		{objectType: ObjectTypeNoteVersion, want: "NTE-0000002A"},
 		{objectType: ObjectTypeFileCollection, want: "FIL-0000002A"},
@@ -44,6 +46,12 @@ func TestFormatCodeRejectsUnsupportedTypesAndOutOfRangeSequences(t *testing.T) {
 }
 
 func TestModuleForObjectTypeMapsSharedModulePrefixes(t *testing.T) {
+	if !CodeMatchesObjectType("USR-00000001", ObjectTypeUser) ||
+		!CodeMatchesObjectType("KEY-00000002", ObjectTypeAPIKey) ||
+		!CodeMatchesModule("USR-00000001", ModulePlatform) ||
+		!CodeMatchesModule("KEY-00000002", ModulePlatform) {
+		t.Fatal("USR and KEY prefixes must both validate for their Platform identity types")
+	}
 	module, err := ModuleForObjectType(ObjectTypeNoteVersion)
 	if err != nil {
 		t.Fatalf("note version module: %v", err)

@@ -363,7 +363,7 @@ Fields use lower snake case. Common fields:
 | Field | Meaning |
 | --- | --- |
 | `request_id` | HTTP request id |
-| `actor_ref_code` | Stable `USR-00000001`, `KEY-*`, or `SYS-*` subject identity |
+| `actor_ref_code` | Stable claimed `USR-*`, claimed `KEY-*`, or `SYS-*` subject identity |
 | `module` | Business module name |
 | `operation` | Current operation name |
 | `resource_type` | Resource type, e.g., `note`, `file` |

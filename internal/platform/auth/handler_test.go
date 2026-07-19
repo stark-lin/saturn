@@ -11,7 +11,7 @@ import (
 
 func TestHandlerLoginReturnsAdministratorPrincipal(t *testing.T) {
 	service := newTestService(t, nil)
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"admin"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"admin"}`))
 	response := httptest.NewRecorder()
 	NewHandler(service).Login(response, request)
 	if response.Code != http.StatusOK {
@@ -24,11 +24,35 @@ func TestHandlerLoginReturnsAdministratorPrincipal(t *testing.T) {
 	if result.User.RefCode != AdministratorRefCode || result.User.Kind != PrincipalKindAdministrator {
 		t.Fatalf("login user = %#v", result.User)
 	}
+	if strings.Contains(response.Body.String(), "username") {
+		t.Fatalf("login response still exposes username: %s", response.Body.String())
+	}
+}
+
+func TestHandlerLoginRejectsRemovedUsernameField(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"admin"}`))
+	response := httptest.NewRecorder()
+	NewHandler(newTestService(t, nil)).Login(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("login status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+}
+
+func TestHandlerLoginReportsInvalidPasswordOnly(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong"}`))
+	response := httptest.NewRecorder()
+	NewHandler(newTestService(t, nil)).Login(response, request)
+	if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"message":"Invalid password"`) {
+		t.Fatalf("login response = %d %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(strings.ToLower(response.Body.String()), "username") {
+		t.Fatalf("login error still mentions username: %s", response.Body.String())
+	}
 }
 
 func TestHandlerCreatesListsAndRevokesAPIKey(t *testing.T) {
 	service := newTestService(t, nil)
-	service.credential = func() (string, string, error) { return "KEY-4F8A2C10", "sat_sk_once-secret-value", nil }
+	service.credential = func() (string, error) { return "sat_sk_once-secret-value", nil }
 	handler := NewHandler(service)
 	create := authenticatedAuthRequest(http.MethodPost, "/api/auth/api-keys", `{"name":"saturn-mcp","scopes":["data:read"]}`, testAdministrator())
 	createResponse := httptest.NewRecorder()

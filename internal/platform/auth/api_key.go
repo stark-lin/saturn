@@ -23,6 +23,7 @@ const (
 )
 
 type APIKey struct {
+	ID         int64        `json:"-"`
 	RefCode    string       `json:"refcode"`
 	Name       string       `json:"name"`
 	KeyPrefix  string       `json:"key_prefix"`

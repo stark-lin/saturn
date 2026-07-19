@@ -164,7 +164,7 @@ System mindset:
 
 ```text
 This is my personal system.
-I am the single administrator, identified by USR-00000001.
+I am the single administrator, identified by a globally claimed USR RefCode.
 I create named API keys for MCP, agents, CLI, and automation.
 All business data belongs to the instance, not to an account or API key.
 ```
@@ -173,7 +173,7 @@ All business data belongs to the instance, not to an account or API key.
 
 | Kind | Stable identity | Description |
 | --- | --- | --- |
-| Administrator | `USR-00000001` | Human Web login, account/API-key/configuration/audit management, and business operations |
+| Administrator | `USR-*` | Human Web login, account/API-key/configuration/audit management, and business operations |
 | API key | `KEY-xxxxxxxx` | Programmatic access constrained by immutable creation-time scopes |
 | System | `SYS-00000000` | Internal or unidentified authentication actions |
 

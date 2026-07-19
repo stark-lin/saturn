@@ -53,6 +53,42 @@ func TestServiceRegistersAndResolvesCanonicalReference(t *testing.T) {
 	}
 }
 
+func TestServiceRegistersSystemOwnedAuthIdentitiesButHidesTheirMetadata(t *testing.T) {
+	repo := newFakeRepository()
+	service := NewService(repo)
+	user := mustRegister(t, service, Registration{
+		OwnerID: SystemOwnerID, ObjectType: ObjectTypeUser, ObjectID: 1,
+		Title: "Administrator", Status: "active",
+	})
+	apiKey := mustRegister(t, service, Registration{
+		OwnerID: SystemOwnerID, ObjectType: ObjectTypeAPIKey, ObjectID: 9,
+		Title: "saturn-mcp", Status: "ACTIVE",
+	})
+	if user.RefCode != "USR-00000001" || apiKey.RefCode != "KEY-00000002" {
+		t.Fatalf("identity refs = %#v, %#v", user, apiKey)
+	}
+	administrator := auth.Principal{ID: 1, RefCode: user.RefCode, Kind: auth.PrincipalKindAdministrator}
+	if _, err := service.ResolveMetadata(context.Background(), administrator, apiKey.RefCode); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("resolve API key metadata error = %v, want not found", err)
+	}
+	metadata, err := service.ListRecentMetadata(context.Background(), administrator, 10)
+	if err != nil || len(metadata) != 0 {
+		t.Fatalf("recent identity metadata = %#v, error = %v", metadata, err)
+	}
+}
+
+func TestServiceEnforcesSystemOwnerForAuthIdentitiesOnly(t *testing.T) {
+	service := NewService(newFakeRepository())
+	for _, registration := range []Registration{
+		{OwnerID: 1, ObjectType: ObjectTypeUser, ObjectID: 1, Title: "Administrator", Status: "active"},
+		{OwnerID: SystemOwnerID, ObjectType: ObjectTypeNote, ObjectID: 2, Title: "Note", Status: "draft"},
+	} {
+		if _, err := service.Register(context.Background(), registration); !errors.Is(err, ErrInvalidObjectRef) {
+			t.Fatalf("registration %#v error = %v, want invalid object ref", registration, err)
+		}
+	}
+}
+
 func TestServiceNotesModuleSearchExpandsBothNTEObjectTypes(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)

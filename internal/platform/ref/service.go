@@ -92,6 +92,9 @@ func (s *Service) ResolveMetadata(ctx context.Context, actor auth.Principal, cod
 	if err != nil {
 		return Metadata{}, err
 	}
+	if !isMetadataObjectType(object.ObjectType) {
+		return Metadata{}, ErrNotFound
+	}
 	if !CodeMatchesObjectType(object.RefCode, object.ObjectType) {
 		return Metadata{}, ErrInvalidObjectRef
 	}
@@ -111,6 +114,9 @@ func (s *Service) ListRecentMetadata(ctx context.Context, actor auth.Principal, 
 	}
 	metadata := make([]Metadata, 0, len(objects))
 	for _, object := range objects {
+		if !isMetadataObjectType(object.ObjectType) {
+			continue
+		}
 		next, err := metadataFromObjectRef(object)
 		if err != nil {
 			return nil, err
@@ -137,6 +143,9 @@ func (s *Service) SearchMetadata(ctx context.Context, actor auth.Principal, quer
 	}
 	metadata := make([]Metadata, 0, len(objects))
 	for _, object := range objects {
+		if !isMetadataObjectType(object.ObjectType) {
+			continue
+		}
 		next, err := metadataFromObjectRef(object)
 		if err != nil {
 			return nil, err
@@ -147,11 +156,15 @@ func (s *Service) SearchMetadata(ctx context.Context, actor auth.Principal, quer
 }
 
 func validateProjection(ownerID int64, objectType ObjectType, objectID int64, title string, status string) error {
-	if ownerID < 1 || objectID < 1 || strings.TrimSpace(title) == "" || strings.TrimSpace(status) == "" {
+	if ownerID < SystemOwnerID || objectID < 1 || strings.TrimSpace(title) == "" || strings.TrimSpace(status) == "" {
 		return ErrInvalidObjectRef
 	}
 	if _, ok := objectDefinitions[objectType]; !ok {
 		return ErrUnsupportedObjectType
+	}
+	if (isIdentityObjectType(objectType) && ownerID != SystemOwnerID) ||
+		(!isIdentityObjectType(objectType) && ownerID == SystemOwnerID) {
+		return ErrInvalidObjectRef
 	}
 	return nil
 }

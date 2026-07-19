@@ -21,6 +21,8 @@ type objectDefinition struct {
 }
 
 var objectDefinitions = map[ObjectType]objectDefinition{
+	ObjectTypeUser:           {module: ModulePlatform, prefix: "USR"},
+	ObjectTypeAPIKey:         {module: ModulePlatform, prefix: "KEY"},
 	ObjectTypeNote:           {module: ModuleNotes, prefix: "NTE"},
 	ObjectTypeNoteVersion:    {module: ModuleNotes, prefix: "NTE"},
 	ObjectTypeFileCollection: {module: ModuleFiles, prefix: "FIL"},
@@ -31,6 +33,19 @@ var objectDefinitions = map[ObjectType]objectDefinition{
 	ObjectTypeTransaction:    {module: ModuleAccounting, prefix: "ACC"},
 	ObjectTypeLLMSession:     {module: ModuleLLM, prefix: "LLM"},
 	ObjectTypeLLMRequest:     {module: ModuleLLM, prefix: "LLM"},
+}
+
+func isMetadataObjectType(objectType ObjectType) bool {
+	for _, metadataObjectType := range objectTypeOrder {
+		if objectType == metadataObjectType {
+			return true
+		}
+	}
+	return false
+}
+
+func isIdentityObjectType(objectType ObjectType) bool {
+	return objectType == ObjectTypeUser || objectType == ObjectTypeAPIKey
 }
 
 var objectTypeOrder = []ObjectType{
@@ -78,7 +93,7 @@ func CodeMatchesObjectType(code string, objectType ObjectType) bool {
 	if !ok {
 		return false
 	}
-	return CodeMatchesModule(code, definition.module)
+	return ValidCode(code) && strings.HasPrefix(code, definition.prefix+"-")
 }
 
 func CodeMatchesModule(code string, module Module) bool {
@@ -86,8 +101,8 @@ func CodeMatchesModule(code string, module Module) bool {
 		return false
 	}
 	for _, definition := range objectDefinitions {
-		if definition.module == module {
-			return strings.HasPrefix(code, definition.prefix+"-")
+		if definition.module == module && strings.HasPrefix(code, definition.prefix+"-") {
+			return true
 		}
 	}
 	return false

@@ -14,13 +14,11 @@ type Handler struct {
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
 type UpdateAdministratorRequest struct {
-	Username *string `json:"username"`
-	Email    *string `json:"email"`
+	Email *string `json:"email"`
 }
 
 type ChangeAdministratorPasswordRequest struct {
@@ -44,9 +42,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid login request")
 		return
 	}
-	result, err := h.service.Login(r.Context(), request.Username, request.Password)
+	result, err := h.service.Login(r.Context(), request.Password)
 	if errors.Is(err, ErrInvalidCredentials) {
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid username or password")
+		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid password")
 		return
 	}
 	if err != nil {
@@ -76,7 +74,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	administrator, err := h.service.UpdateAdministrator(r.Context(), principal, UpdateAdministratorInput{
-		Username: request.Username, Email: request.Email,
+		Email: request.Email,
 	})
 	if h.writeServiceError(w, err) {
 		return
@@ -190,7 +188,7 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, ErrUnauthenticated):
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
 	case errors.Is(err, ErrInvalidCredentials):
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid username or password")
+		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid password")
 	case errors.Is(err, ErrInvalidAdministrator), errors.Is(err, ErrInvalidAPIKey):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid authentication request")
 	case errors.Is(err, ErrForbidden):

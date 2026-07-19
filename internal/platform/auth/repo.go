@@ -15,10 +15,9 @@ import (
 )
 
 type Repository interface {
-	FindAdministratorByUsername(ctx context.Context, username string) (User, error)
 	FindAdministratorByRefCode(ctx context.Context, refCode string) (User, error)
 	FindAdministrator(ctx context.Context) (User, error)
-	UpdateAdministratorProfile(ctx context.Context, username string, email string) (User, error)
+	UpdateAdministratorEmail(ctx context.Context, email string) (User, error)
 	UpdateAdministratorPassword(ctx context.Context, passwordHash string) (User, error)
 	CreateAPIKey(ctx context.Context, input CreateAPIKeyRecord) (APIKey, error)
 	UseAPIKey(ctx context.Context, keyHash string) (APIKey, error)
@@ -28,7 +27,8 @@ type Repository interface {
 }
 
 type AdministratorInitializer interface {
-	CreateAdministratorIfMissing(ctx context.Context, username string, passwordHash string) error
+	FindAdministrator(ctx context.Context) (User, error)
+	CreateAdministrator(ctx context.Context, refCode string, passwordHash string) (User, error)
 }
 
 type CreateAPIKeyRecord struct {
@@ -49,17 +49,6 @@ func NewSQLRepository(database *sql.DB) *SQLRepository {
 	return &SQLRepository{database: database, queries: authsqlc.New(database)}
 }
 
-func (r *SQLRepository) FindAdministratorByUsername(ctx context.Context, username string) (User, error) {
-	if err := r.validate(); err != nil {
-		return User{}, err
-	}
-	row, err := r.queriesFor(ctx).FindAdministratorByUsername(ctx, username)
-	if err != nil {
-		return User{}, err
-	}
-	return userFromDatabaseFields(row.ID, row.RefCode, row.Username, row.Email, row.PasswordHash), nil
-}
-
 func (r *SQLRepository) FindAdministratorByRefCode(ctx context.Context, refCode string) (User, error) {
 	if err := r.validate(); err != nil {
 		return User{}, err
@@ -68,7 +57,7 @@ func (r *SQLRepository) FindAdministratorByRefCode(ctx context.Context, refCode 
 	if err != nil {
 		return User{}, err
 	}
-	return userFromDatabaseFields(row.ID, row.RefCode, row.Username, row.Email, row.PasswordHash), nil
+	return userFromDatabaseFields(row.ID, row.RefCode, row.Email, row.PasswordHash), nil
 }
 
 func (r *SQLRepository) FindAdministrator(ctx context.Context) (User, error) {
@@ -79,24 +68,15 @@ func (r *SQLRepository) FindAdministrator(ctx context.Context) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
-	return userFromDatabaseFields(row.ID, row.RefCode, row.Username, row.Email, row.PasswordHash), nil
+	return userFromDatabaseFields(row.ID, row.RefCode, row.Email, row.PasswordHash), nil
 }
 
-func (r *SQLRepository) CreateAdministratorIfMissing(ctx context.Context, username string, passwordHash string) error {
-	if err := r.validate(); err != nil {
-		return err
-	}
-	return r.queriesFor(ctx).CreateAdministratorIfMissing(ctx, authsqlc.CreateAdministratorIfMissingParams{
-		Username: username, PasswordHash: passwordHash,
-	})
-}
-
-func (r *SQLRepository) UpdateAdministratorProfile(ctx context.Context, username string, email string) (User, error) {
+func (r *SQLRepository) CreateAdministrator(ctx context.Context, refCode string, passwordHash string) (User, error) {
 	if err := r.validate(); err != nil {
 		return User{}, err
 	}
-	row, err := r.queriesFor(ctx).UpdateAdministratorProfile(ctx, authsqlc.UpdateAdministratorProfileParams{
-		Username: username, Email: nullableString(email),
+	row, err := r.queriesFor(ctx).CreateAdministrator(ctx, authsqlc.CreateAdministratorParams{
+		RefCode: refCode, PasswordHash: passwordHash,
 	})
 	if isUniqueViolation(err) {
 		return User{}, ErrAdministratorConflict
@@ -104,7 +84,21 @@ func (r *SQLRepository) UpdateAdministratorProfile(ctx context.Context, username
 	if err != nil {
 		return User{}, err
 	}
-	return userFromDatabaseFields(row.ID, row.RefCode, row.Username, row.Email, row.PasswordHash), nil
+	return userFromDatabaseFields(row.ID, row.RefCode, row.Email, row.PasswordHash), nil
+}
+
+func (r *SQLRepository) UpdateAdministratorEmail(ctx context.Context, email string) (User, error) {
+	if err := r.validate(); err != nil {
+		return User{}, err
+	}
+	row, err := r.queriesFor(ctx).UpdateAdministratorEmail(ctx, nullableString(email))
+	if isUniqueViolation(err) {
+		return User{}, ErrAdministratorConflict
+	}
+	if err != nil {
+		return User{}, err
+	}
+	return userFromDatabaseFields(row.ID, row.RefCode, row.Email, row.PasswordHash), nil
 }
 
 func (r *SQLRepository) UpdateAdministratorPassword(ctx context.Context, passwordHash string) (User, error) {
@@ -115,7 +109,7 @@ func (r *SQLRepository) UpdateAdministratorPassword(ctx context.Context, passwor
 	if err != nil {
 		return User{}, err
 	}
-	return userFromDatabaseFields(row.ID, row.RefCode, row.Username, row.Email, row.PasswordHash), nil
+	return userFromDatabaseFields(row.ID, row.RefCode, row.Email, row.PasswordHash), nil
 }
 
 func (r *SQLRepository) CreateAPIKey(ctx context.Context, input CreateAPIKeyRecord) (APIKey, error) {
@@ -132,7 +126,7 @@ func (r *SQLRepository) CreateAPIKey(ctx context.Context, input CreateAPIKeyReco
 	if err != nil {
 		return APIKey{}, err
 	}
-	return apiKeyFromDatabaseFields(row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
+	return apiKeyFromDatabaseFields(row.ID, row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
 }
 
 func (r *SQLRepository) UseAPIKey(ctx context.Context, keyHash string) (APIKey, error) {
@@ -143,7 +137,7 @@ func (r *SQLRepository) UseAPIKey(ctx context.Context, keyHash string) (APIKey, 
 	if err != nil {
 		return APIKey{}, err
 	}
-	return apiKeyFromDatabaseFields(row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
+	return apiKeyFromDatabaseFields(row.ID, row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
 }
 
 func (r *SQLRepository) FindAPIKeyByRefCode(ctx context.Context, refCode string) (APIKey, error) {
@@ -154,7 +148,7 @@ func (r *SQLRepository) FindAPIKeyByRefCode(ctx context.Context, refCode string)
 	if err != nil {
 		return APIKey{}, err
 	}
-	return apiKeyFromDatabaseFields(row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
+	return apiKeyFromDatabaseFields(row.ID, row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
 }
 
 func (r *SQLRepository) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
@@ -167,7 +161,7 @@ func (r *SQLRepository) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
 	}
 	keys := make([]APIKey, 0, len(rows))
 	for _, row := range rows {
-		keys = append(keys, apiKeyFromDatabaseFields(row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt))
+		keys = append(keys, apiKeyFromDatabaseFields(row.ID, row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt))
 	}
 	return keys, nil
 }
@@ -180,7 +174,7 @@ func (r *SQLRepository) RevokeAPIKey(ctx context.Context, refCode string) (APIKe
 	if err != nil {
 		return APIKey{}, err
 	}
-	return apiKeyFromDatabaseFields(row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
+	return apiKeyFromDatabaseFields(row.ID, row.RefCode, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.CreatedAt, row.LastUsedAt, row.ExpiresAt, row.RevokedAt), nil
 }
 
 func (r *SQLRepository) validate() error {
@@ -194,13 +188,13 @@ func (r *SQLRepository) queriesFor(ctx context.Context) *authsqlc.Queries {
 	return authsqlc.New(platformdb.ExecutorFromContext(ctx, r.database))
 }
 
-func userFromDatabaseFields(id int64, refCode string, username string, email string, passwordHash string) User {
-	return User{ID: id, RefCode: refCode, Username: username, Email: email, PasswordHash: passwordHash}
+func userFromDatabaseFields(id int64, refCode string, email string, passwordHash string) User {
+	return User{ID: id, RefCode: refCode, Email: email, PasswordHash: passwordHash}
 }
 
-func apiKeyFromDatabaseFields(refCode string, name string, keyPrefix string, keyHash string, scopes []string, createdAt time.Time, lastUsedAt sql.NullTime, expiresAt sql.NullTime, revokedAt sql.NullTime) APIKey {
+func apiKeyFromDatabaseFields(id int64, refCode string, name string, keyPrefix string, keyHash string, scopes []string, createdAt time.Time, lastUsedAt sql.NullTime, expiresAt sql.NullTime, revokedAt sql.NullTime) APIKey {
 	key := APIKey{
-		RefCode: refCode, Name: name, KeyPrefix: keyPrefix, KeyHash: keyHash,
+		ID: id, RefCode: refCode, Name: name, KeyPrefix: keyPrefix, KeyHash: keyHash,
 		Scopes: scopeNames(scopes), CreatedAt: createdAt,
 		LastUsedAt: timePointer(lastUsedAt), ExpiresAt: timePointer(expiresAt), RevokedAt: timePointer(revokedAt),
 	}

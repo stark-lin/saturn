@@ -306,9 +306,10 @@ Basic boundaries:
 ```text
 Internal data relationships still use database ids
 ref_code is mainly used for display, shared instance metadata query, search, LLM, and manual references
-object_refs authoritatively maintains ref_code and title/tags/status metadata projections
+object_refs authoritatively maintains global ref_code claims and title/tags/status metadata projections; auth identities retain claimed actor codes in their source rows
 Exact ref_code and recent object metadata responses both return title, tags, status; tags is an empty array when there are no tags
-ref_code uses NTE / FIL / ACC / CAL / LLM module prefixes; object types are additionally expressed by object_type
+ref_code uses USR / KEY identity prefixes and NTE / FIL / ACC / CAL / LLM module prefixes; object types are additionally expressed by object_type
+user and api_key rows claim codes from the same global sequence, register with the SYS owner, and stay out of shared business metadata responses
 The first version Search metadata query reads the shared Saturn instance after credential-scope authorization
 Prioritize allocating to first-class business objects like Note, File, EventAggregate, Event, Account, Transaction, Collection
 Does not require relationship tables, configuration items, sessions, or search index rows to have ref codes
