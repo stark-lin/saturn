@@ -1,4 +1,4 @@
-// This file tests the superuser-only audit log HTTP contract.
+// This file tests the administrator-only audit log HTTP contract.
 package audit
 
 import (
@@ -15,7 +15,7 @@ import (
 func TestHandlerListRejectsOrdinaryUser(t *testing.T) {
 	handler := NewHandler(&fakeLister{err: auth.ErrForbidden})
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/audit-logs", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.List(response, request)
@@ -25,11 +25,11 @@ func TestHandlerListRejectsOrdinaryUser(t *testing.T) {
 	}
 }
 
-func TestHandlerListReturnsSuperuserAuditEnvelope(t *testing.T) {
-	lister := &fakeLister{logs: []Event{{ID: 1, ActorType: ActorTypeUser, Action: ActionLogin, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess}}}
+func TestHandlerListReturnsAdministratorAuditEnvelope(t *testing.T) {
+	lister := &fakeLister{logs: []Event{{ID: 1, ActorRefCode: auth.AdministratorRefCode, Action: ActionLogin, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess}}}
 	handler := NewHandler(lister)
-	request := httptest.NewRequest(http.MethodGet, "/api/platform/audit-logs?limit=10&offset=2&action=login&result=success&target_ref_code=nte-00000001&actor_user_id=7", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, Role: auth.RoleSuperuser}))
+	request := httptest.NewRequest(http.MethodGet, "/api/platform/audit-logs?limit=10&offset=2&action=login&result=success&target_ref_code=nte-00000001&actor_ref_code=key-4f8a2c10", nil)
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.List(response, request)
@@ -39,7 +39,7 @@ func TestHandlerListReturnsSuperuserAuditEnvelope(t *testing.T) {
 	}
 	if lister.query.Limit != 10 || lister.query.Offset != 2 ||
 		lister.query.Action != ActionLogin || lister.query.Result != ResultSuccess ||
-		lister.query.TargetRefCode != "NTE-00000001" || lister.query.ActorUserID != 7 {
+		lister.query.TargetRefCode != "NTE-00000001" || lister.query.ActorRefCode != "KEY-4F8A2C10" {
 		t.Fatalf("query = %#v", lister.query)
 	}
 	var body struct {
@@ -71,7 +71,7 @@ func TestHandlerListRejectsInvalidQuery(t *testing.T) {
 	tests := []string{
 		"/api/platform/audit-logs?unknown=1",
 		"/api/platform/audit-logs?target_ref_code=bad",
-		"/api/platform/audit-logs?actor_user_id=0",
+		"/api/platform/audit-logs?actor_ref_code=bad",
 		"/api/platform/audit-logs?action=bad",
 		"/api/platform/audit-logs?result=bad",
 		"/api/platform/audit-logs?limit=0",
@@ -81,7 +81,7 @@ func TestHandlerListRejectsInvalidQuery(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			handler := NewHandler(&fakeLister{})
 			request := httptest.NewRequest(http.MethodGet, target, nil)
-			request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, Role: auth.RoleSuperuser}))
+			request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 			response := httptest.NewRecorder()
 
 			handler.List(response, request)
@@ -107,7 +107,7 @@ func TestHandlerListMapsServiceErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := NewHandler(&fakeLister{err: tt.err})
 			request := httptest.NewRequest(http.MethodGet, "/api/platform/audit-logs", nil)
-			request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, Role: auth.RoleSuperuser}))
+			request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 			response := httptest.NewRecorder()
 
 			handler.List(response, request)

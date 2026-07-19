@@ -57,7 +57,7 @@ func TestServiceNotesModuleSearchExpandsBothNTEObjectTypes(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)
 
-	_, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, MetadataSearchQuery{
+	_, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, MetadataSearchQuery{
 		Modules: []Module{ModuleNotes}, Limit: 10,
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestServiceNotesModuleSearchExpandsBothNTEObjectTypes(t *testing.T) {
 	}
 }
 
-func TestServiceResolveMetadataIsOwnerOnly(t *testing.T) {
+func TestServiceResolveMetadataIsSharedAcrossPrincipals(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)
 	file := mustRegister(t, service, Registration{
@@ -87,10 +87,10 @@ func TestServiceResolveMetadataIsOwnerOnly(t *testing.T) {
 		Title:      "Draft note",
 		Status:     "draft",
 	})
-	owner := auth.Principal{ID: 7, Role: auth.RoleUser}
-	metadata, err := service.ResolveMetadata(context.Background(), owner, file.RefCode)
+	administrator := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
+	metadata, err := service.ResolveMetadata(context.Background(), administrator, file.RefCode)
 	if err != nil {
-		t.Fatalf("owner resolve private metadata: %v", err)
+		t.Fatalf("administrator resolve shared metadata: %v", err)
 	}
 	if metadata.Module != ModuleFiles || metadata.ObjectType != ObjectTypeFile || metadata.Status != "active" {
 		t.Fatalf("metadata = %#v, want files/file", metadata)
@@ -98,20 +98,16 @@ func TestServiceResolveMetadataIsOwnerOnly(t *testing.T) {
 	if len(metadata.Tags) != 0 {
 		t.Fatalf("metadata tags = %#v, want empty tags", metadata.Tags)
 	}
-	reader := auth.Principal{ID: 8, Role: auth.RoleUser}
-	if _, err := service.ResolveMetadata(context.Background(), reader, file.RefCode); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("file non-owner error = %v, want not found", err)
+	apiKey := auth.Principal{ID: 8, RefCode: "KEY-4F8A2C10", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataRead}}
+	if sharedFile, err := service.ResolveMetadata(context.Background(), apiKey, file.RefCode); err != nil || sharedFile.RefCode != file.RefCode {
+		t.Fatalf("API key shared file metadata = %#v, error = %v", sharedFile, err)
 	}
-	if _, err := service.ResolveMetadata(context.Background(), reader, note.RefCode); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("draft note non-owner error = %v, want not found", err)
-	}
-	superuser := auth.Principal{ID: 1, Role: auth.RoleSuperuser}
-	if _, err := service.ResolveMetadata(context.Background(), superuser, file.RefCode); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("non-owner superuser error = %v, want not found", err)
+	if sharedNote, err := service.ResolveMetadata(context.Background(), apiKey, note.RefCode); err != nil || sharedNote.RefCode != note.RefCode {
+		t.Fatalf("API key shared note metadata = %#v, error = %v", sharedNote, err)
 	}
 }
 
-func TestServiceListRecentMetadataIsOwnerOnly(t *testing.T) {
+func TestServiceListRecentMetadataIsSharedAcrossPrincipals(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)
 	mustRegister(t, service, Registration{
@@ -125,7 +121,7 @@ func TestServiceListRecentMetadataIsOwnerOnly(t *testing.T) {
 		OwnerID:    8,
 		ObjectType: ObjectTypeFile,
 		ObjectID:   4,
-		Title:      "Other owner's file",
+		Title:      "Imported file with legacy anchor",
 		Status:     "active",
 	})
 	mustRegister(t, service, Registration{
@@ -136,37 +132,37 @@ func TestServiceListRecentMetadataIsOwnerOnly(t *testing.T) {
 		Status:     "active",
 	})
 
-	metadata, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, 10)
+	metadata, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, 10)
 	if err != nil {
 		t.Fatalf("list recent metadata: %v", err)
 	}
-	if repo.recentOwnerID != 7 || repo.recentLimit != 10 {
-		t.Fatalf("recent query owner = %d, limit = %d", repo.recentOwnerID, repo.recentLimit)
+	if repo.recentLimit != 10 {
+		t.Fatalf("recent query limit = %d", repo.recentLimit)
 	}
-	if len(metadata) != 2 || metadata[0].Module != ModuleNotes || metadata[1].Module != ModuleCalendar {
-		t.Fatalf("recent metadata = %#v, want only owner records in reference order", metadata)
+	if len(metadata) != 3 || metadata[0].Module != ModuleCalendar || metadata[1].Module != ModuleFiles || metadata[2].Module != ModuleNotes {
+		t.Fatalf("recent metadata = %#v, want all instance records in reference order", metadata)
 	}
-	if metadata[0].Tags == nil || metadata[1].Tags == nil {
+	if metadata[0].Tags == nil || metadata[1].Tags == nil || metadata[2].Tags == nil {
 		t.Fatalf("recent metadata tags must be non-nil: %#v", metadata)
 	}
-	superuserMetadata, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 1, Role: auth.RoleSuperuser}, 10)
+	apiKeyMetadata, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 1, RefCode: "KEY-A92D77E1", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataRead}}, 10)
 	if err != nil {
-		t.Fatalf("list recent metadata as non-owner superuser: %v", err)
+		t.Fatalf("list recent metadata with API key: %v", err)
 	}
-	if len(superuserMetadata) != 0 {
-		t.Fatalf("non-owner superuser metadata = %#v, want no owner-only records", superuserMetadata)
+	if len(apiKeyMetadata) != len(metadata) {
+		t.Fatalf("API key metadata = %#v, want shared instance result", apiKeyMetadata)
 	}
 }
 
 func TestServiceListRecentMetadataRejectsInvalidLimit(t *testing.T) {
 	service := NewService(newFakeRepository())
 
-	if _, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, 0); !errors.Is(err, ErrInvalidRecentMetadataLimit) {
+	if _, err := service.ListRecentMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, 0); !errors.Is(err, ErrInvalidRecentMetadataLimit) {
 		t.Fatalf("invalid recent metadata limit error = %v", err)
 	}
 }
 
-func TestServiceSearchMetadataNormalizesFiltersAndReturnsOwnerMetadata(t *testing.T) {
+func TestServiceSearchMetadataNormalizesFiltersAndReturnsSharedMetadata(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(repo)
 	file := mustRegister(t, service, Registration{
@@ -189,12 +185,12 @@ func TestServiceSearchMetadataNormalizesFiltersAndReturnsOwnerMetadata(t *testin
 		OwnerID:    8,
 		ObjectType: ObjectTypeFile,
 		ObjectID:   6,
-		Title:      "Other owner file",
+		Title:      "Imported file with legacy anchor",
 		Tags:       []string{"backend", "release"},
 		Status:     "active",
 	})
 
-	metadata, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, MetadataSearchQuery{
+	metadata, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, MetadataSearchQuery{
 		Modules:     []Module{ModuleFiles},
 		ObjectTypes: []ObjectType{ObjectTypeFile, ObjectTypeNote},
 		Statuses:    []string{"active", "active"},
@@ -208,11 +204,11 @@ func TestServiceSearchMetadataNormalizesFiltersAndReturnsOwnerMetadata(t *testin
 	if err != nil {
 		t.Fatalf("search metadata: %v", err)
 	}
-	if len(metadata) != 1 || metadata[0].RefCode != file.RefCode || metadata[0].Module != ModuleFiles {
-		t.Fatalf("search metadata = %#v, want owner file metadata", metadata)
+	if len(metadata) != 2 || metadata[0].RefCode != file.RefCode || metadata[1].ObjectType != ObjectTypeFile {
+		t.Fatalf("search metadata = %#v, want both matching instance files", metadata)
 	}
-	if repo.searchOwnerID != 7 || repo.searchCalls != 1 {
-		t.Fatalf("search owner = %d calls = %d", repo.searchOwnerID, repo.searchCalls)
+	if repo.searchCalls != 1 {
+		t.Fatalf("search calls = %d", repo.searchCalls)
 	}
 	if len(repo.searchQuery.ObjectTypes) != 1 || repo.searchQuery.ObjectTypes[0] != ObjectTypeFile {
 		t.Fatalf("normalized object types = %#v, want file only", repo.searchQuery.ObjectTypes)
@@ -232,7 +228,7 @@ func TestServiceSearchMetadataSkipsRepositoryWhenModuleObjectTypeIntersectionIsE
 	repo := newFakeRepository()
 	service := NewService(repo)
 
-	metadata, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, MetadataSearchQuery{
+	metadata, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, MetadataSearchQuery{
 		Modules:     []Module{ModuleFiles},
 		ObjectTypes: []ObjectType{ObjectTypeNote},
 		Limit:       10,
@@ -259,7 +255,7 @@ func TestServiceSearchMetadataRejectsInvalidQuery(t *testing.T) {
 		{Limit: MaxMetadataSearchLimit + 1},
 		{CreatedFrom: &now, CreatedTo: &earlier, Limit: 10},
 	} {
-		if _, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, query); !errors.Is(err, ErrInvalidMetadataSearchQuery) {
+		if _, err := service.SearchMetadata(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, query); !errors.Is(err, ErrInvalidMetadataSearchQuery) {
 			t.Fatalf("invalid metadata search query %#v error = %v, want invalid query", query, err)
 		}
 	}
@@ -275,13 +271,11 @@ func mustRegister(t *testing.T, service *Service, registration Registration) Obj
 }
 
 type fakeRepository struct {
-	sequence      int64
-	objects       map[string]ObjectRef
-	recentOwnerID int64
-	recentLimit   int
-	searchCalls   int
-	searchOwnerID int64
-	searchQuery   MetadataSearchQuery
+	sequence    int64
+	objects     map[string]ObjectRef
+	recentLimit int
+	searchCalls int
+	searchQuery MetadataSearchQuery
 }
 
 func newFakeRepository() *fakeRepository {
@@ -295,6 +289,8 @@ func (r *fakeRepository) NextSequence(_ context.Context) (int64, error) {
 
 func (r *fakeRepository) Register(_ context.Context, object ObjectRef) (ObjectRef, error) {
 	object.ID = int64(len(r.objects) + 1)
+	object.CreatedAt = time.Unix(object.ID, 0).UTC()
+	object.UpdatedAt = object.CreatedAt
 	r.objects[object.RefCode] = object
 	return object, nil
 }
@@ -307,14 +303,11 @@ func (r *fakeRepository) FindByCode(_ context.Context, code string) (ObjectRef, 
 	return object, nil
 }
 
-func (r *fakeRepository) ListRecentByOwner(_ context.Context, ownerID int64, limit int) ([]ObjectRef, error) {
-	r.recentOwnerID = ownerID
+func (r *fakeRepository) ListRecent(_ context.Context, limit int) ([]ObjectRef, error) {
 	r.recentLimit = limit
 	objects := make([]ObjectRef, 0, len(r.objects))
 	for _, object := range r.objects {
-		if object.OwnerID == ownerID {
-			objects = append(objects, object)
-		}
+		objects = append(objects, object)
 	}
 	sort.Slice(objects, func(i, j int) bool {
 		if objects[i].UpdatedAt.Equal(objects[j].UpdatedAt) {
@@ -328,13 +321,12 @@ func (r *fakeRepository) ListRecentByOwner(_ context.Context, ownerID int64, lim
 	return objects, nil
 }
 
-func (r *fakeRepository) SearchByOwner(_ context.Context, ownerID int64, query MetadataSearchQuery) ([]ObjectRef, error) {
+func (r *fakeRepository) Search(_ context.Context, query MetadataSearchQuery) ([]ObjectRef, error) {
 	r.searchCalls++
-	r.searchOwnerID = ownerID
 	r.searchQuery = query
 	objects := make([]ObjectRef, 0, len(r.objects))
 	for _, object := range r.objects {
-		if object.OwnerID != ownerID || !fakeObjectMatchesQuery(object, query) {
+		if !fakeObjectMatchesQuery(object, query) {
 			continue
 		}
 		objects = append(objects, object)

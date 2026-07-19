@@ -19,17 +19,16 @@ func NewSQLRepository(database *sql.DB) *SQLRepository {
 	return &SQLRepository{database: database}
 }
 
-func (r *SQLRepository) ListNotes(ctx context.Context, ownerID int64, query Query) (Page, error) {
+func (r *SQLRepository) ListNotes(ctx context.Context, query Query) (Page, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return Page{}, err
 	}
 	rows, err := executor.QueryContext(ctx, noteSelectSQL+`
-WHERE n.owner_id = $1
-  AND ($2::text = '' OR version.title ILIKE '%' || $2 || '%' OR version.content ILIKE '%' || $2 || '%')
-  AND ($3::text = '' OR note_ref.tags @> ARRAY[$3]::text[])
+WHERE ($1::text = '' OR version.title ILIKE '%' || $1 || '%' OR version.content ILIKE '%' || $1 || '%')
+  AND ($2::text = '' OR note_ref.tags @> ARRAY[$2]::text[])
 ORDER BY n.updated_at DESC, note_ref.ref_code DESC
-LIMIT $4 OFFSET $5`, ownerID, query.Text, query.Tag, query.Limit+1, query.Offset)
+LIMIT $3 OFFSET $4`, query.Text, query.Tag, query.Limit+1, query.Offset)
 	if err != nil {
 		return Page{}, err
 	}
@@ -68,29 +67,27 @@ RETURNING id, owner_id, created_at, updated_at`, ownerID).Scan(
 	return note, err
 }
 
-func (r *SQLRepository) FindNoteByRefCode(ctx context.Context, ownerID int64, refCode string) (Note, error) {
+func (r *SQLRepository) FindNoteByRefCode(ctx context.Context, refCode string) (Note, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return Note{}, err
 	}
 	note, err := scanNote(executor.QueryRowContext(ctx, noteSelectSQL+`
-WHERE n.owner_id = $1
-  AND note_ref.ref_code = $2`, ownerID, refCode))
+WHERE note_ref.ref_code = $1`, refCode))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNoteNotFound
 	}
 	return note, err
 }
 
-func (r *SQLRepository) LockNoteByRefCode(ctx context.Context, ownerID int64, refCode string) (Note, error) {
+func (r *SQLRepository) LockNoteByRefCode(ctx context.Context, refCode string) (Note, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return Note{}, err
 	}
 	note, err := scanNote(executor.QueryRowContext(ctx, noteSelectSQL+`
-WHERE n.owner_id = $1
-  AND note_ref.ref_code = $2
-FOR UPDATE OF n`, ownerID, refCode))
+WHERE note_ref.ref_code = $1
+FOR UPDATE OF n`, refCode))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNoteNotFound
 	}
@@ -115,29 +112,27 @@ RETURNING id, note_id, parent_version_id, version_number, title, content, conten
 	return version, err
 }
 
-func (r *SQLRepository) FindVersionByRefCode(ctx context.Context, ownerID int64, refCode string) (Version, error) {
+func (r *SQLRepository) FindVersionByRefCode(ctx context.Context, refCode string) (Version, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return Version{}, err
 	}
 	version, err := scanVersion(executor.QueryRowContext(ctx, versionSelectSQL+`
-WHERE n.owner_id = $1
-  AND version_ref.ref_code = $2`, ownerID, refCode))
+WHERE version_ref.ref_code = $1`, refCode))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Version{}, ErrVersionNotFound
 	}
 	return version, err
 }
 
-func (r *SQLRepository) ListVersions(ctx context.Context, ownerID int64, noteRefCode string) ([]Version, error) {
+func (r *SQLRepository) ListVersions(ctx context.Context, noteRefCode string) ([]Version, error) {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := executor.QueryContext(ctx, versionSelectSQL+`
-WHERE n.owner_id = $1
-  AND note_ref.ref_code = $2
-ORDER BY version.version_number DESC`, ownerID, noteRefCode)
+WHERE note_ref.ref_code = $1
+ORDER BY version.version_number DESC`, noteRefCode)
 	if err != nil {
 		return nil, err
 	}
@@ -160,24 +155,24 @@ ORDER BY version.version_number DESC`, ownerID, noteRefCode)
 	return versions, nil
 }
 
-func (r *SQLRepository) SetCurrentVersion(ctx context.Context, ownerID int64, noteID int64, versionID int64) error {
+func (r *SQLRepository) SetCurrentVersion(ctx context.Context, noteID int64, versionID int64) error {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return err
 	}
 	result, err := executor.ExecContext(ctx, `
 UPDATE notes
-SET current_version_id = $3, updated_at = NOW()
-WHERE owner_id = $1 AND id = $2`, ownerID, noteID, versionID)
+SET current_version_id = $2, updated_at = NOW()
+WHERE id = $1`, noteID, versionID)
 	return noteMutationResult(result, err)
 }
 
-func (r *SQLRepository) DeleteNote(ctx context.Context, ownerID int64, noteID int64) error {
+func (r *SQLRepository) DeleteNote(ctx context.Context, noteID int64) error {
 	executor, err := r.executor(ctx)
 	if err != nil {
 		return err
 	}
-	result, err := executor.ExecContext(ctx, `DELETE FROM notes WHERE owner_id = $1 AND id = $2`, ownerID, noteID)
+	result, err := executor.ExecContext(ctx, `DELETE FROM notes WHERE id = $1`, noteID)
 	return noteMutationResult(result, err)
 }
 

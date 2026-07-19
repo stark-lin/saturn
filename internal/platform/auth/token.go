@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -30,9 +29,8 @@ type IssuedToken struct {
 }
 
 type TokenClaims struct {
-	UserID    int64
+	RefCode   string
 	Username  string
-	Role      Role
 	TokenID   string
 	ExpiresAt time.Time
 }
@@ -40,7 +38,6 @@ type TokenClaims struct {
 type jwtPayload struct {
 	Subject   string `json:"sub"`
 	Username  string `json:"username"`
-	Role      Role   `json:"role"`
 	TokenID   string `json:"jti"`
 	IssuedAt  int64  `json:"iat"`
 	ExpiresAt int64  `json:"exp"`
@@ -57,10 +54,7 @@ func NewTokenManager(secret string, ttl time.Duration) (*TokenManager, error) {
 }
 
 func (m *TokenManager) Issue(principal Principal) (IssuedToken, error) {
-	if m == nil || principal.IsZero() || strings.TrimSpace(principal.Username) == "" {
-		return IssuedToken{}, ErrInvalidToken
-	}
-	if principal.Role != RoleSuperuser && principal.Role != RoleUser {
+	if m == nil || principal.IsZero() || !principal.IsAdministrator() || principal.ActorRefCode() != AdministratorRefCode || strings.TrimSpace(principal.Username) == "" {
 		return IssuedToken{}, ErrInvalidToken
 	}
 
@@ -71,9 +65,8 @@ func (m *TokenManager) Issue(principal Principal) (IssuedToken, error) {
 	now := m.now().UTC()
 	expiresAt := now.Add(m.ttl)
 	payload := jwtPayload{
-		Subject:   strconv.FormatInt(principal.ID, 10),
+		Subject:   principal.ActorRefCode(),
 		Username:  principal.Username,
-		Role:      principal.Role,
 		TokenID:   tokenID,
 		IssuedAt:  now.Unix(),
 		ExpiresAt: expiresAt.Unix(),
@@ -111,11 +104,7 @@ func (m *TokenManager) Verify(token string) (TokenClaims, error) {
 	if err := decodeJWTPart(parts[1], &payload); err != nil {
 		return TokenClaims{}, ErrInvalidToken
 	}
-	userID, err := strconv.ParseInt(payload.Subject, 10, 64)
-	if err != nil || userID <= 0 || strings.TrimSpace(payload.TokenID) == "" || strings.TrimSpace(payload.Username) == "" {
-		return TokenClaims{}, ErrInvalidToken
-	}
-	if payload.Role != RoleSuperuser && payload.Role != RoleUser {
+	if payload.Subject != AdministratorRefCode || strings.TrimSpace(payload.TokenID) == "" || strings.TrimSpace(payload.Username) == "" {
 		return TokenClaims{}, ErrInvalidToken
 	}
 	expiresAt := time.Unix(payload.ExpiresAt, 0).UTC()
@@ -123,9 +112,8 @@ func (m *TokenManager) Verify(token string) (TokenClaims, error) {
 		return TokenClaims{}, ErrInvalidToken
 	}
 	return TokenClaims{
-		UserID:    userID,
+		RefCode:   payload.Subject,
 		Username:  payload.Username,
-		Role:      payload.Role,
 		TokenID:   payload.TokenID,
 		ExpiresAt: expiresAt,
 	}, nil

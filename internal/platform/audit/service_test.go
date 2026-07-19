@@ -1,4 +1,4 @@
-// This file tests append-only audit validation and superuser query access.
+// This file tests append-only actor-RefCode audit validation and administrator query access.
 package audit
 
 import (
@@ -14,12 +14,12 @@ import (
 	"github.com/stark-lin/saturn/internal/platform/httpx"
 )
 
-func TestServiceRejectsUserReadAuditAndInvalidActorIdentity(t *testing.T) {
+func TestServiceRejectsInvalidActorRefCode(t *testing.T) {
 	service := NewService(&fakeRepository{}, platformdb.NoopTransactionRunner{})
 	for _, event := range []Event{
-		{ActorType: ActorTypeUser, ActorUserID: 7, Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
-		{ActorType: ActorTypeUser, Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
-		{ActorType: ActorTypeLLM, ActorUserID: 7, Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{ActorRefCode: "USR-00000002", Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{ActorRefCode: "KEY-bad", Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
 	} {
 		if _, err := service.Record(context.Background(), event); !errors.Is(err, ErrInvalidEvent) {
 			t.Fatalf("event %#v error = %v, want invalid event", event, err)
@@ -27,13 +27,13 @@ func TestServiceRejectsUserReadAuditAndInvalidActorIdentity(t *testing.T) {
 	}
 }
 
-func TestServiceAcceptsLLMReadAudit(t *testing.T) {
+func TestServiceAcceptsAPIKeyReadAudit(t *testing.T) {
 	repo := &fakeRepository{}
 	service := NewService(repo, platformdb.NoopTransactionRunner{})
-	event := Event{ActorType: ActorTypeLLM, Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess}
+	event := Event{ActorRefCode: "KEY-4F8A2C10", Action: ActionRead, TargetRefCode: "NTE-00000001", Result: ResultSuccess}
 
 	if _, err := service.Record(context.Background(), event); err != nil {
-		t.Fatalf("record LLM read: %v", err)
+		t.Fatalf("record API key read: %v", err)
 	}
 	if len(repo.inserted) != 1 || repo.inserted[0].SourceIP != "127.0.0.1" {
 		t.Fatalf("inserted audit = %#v", repo.inserted)
@@ -50,7 +50,7 @@ func TestServiceRecordEnrichesSourceAndNormalizesStableFields(t *testing.T) {
 
 	createdAt := time.Unix(100, 0).UTC()
 	event, err := service.Record(ctx, Event{
-		ActorType: ActorTypeUser, ActorUserID: 7, Action: ActionUpdate,
+		ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate,
 		TargetRefCode: " nte-00000001 ", Result: ResultFailed, Reason: " validation_failed ",
 		CreatedAt: createdAt,
 	})
@@ -71,11 +71,12 @@ func TestServiceRecordEnrichesSourceAndNormalizesStableFields(t *testing.T) {
 func TestServiceRecordRejectsInvalidActionResultTargetAndSource(t *testing.T) {
 	service := NewService(&fakeRepository{}, platformdb.NoopTransactionRunner{})
 	tests := []Event{
-		{ActorType: ActorTypeUser, ActorUserID: 7, Action: Action("BAD"), TargetRefCode: "NTE-00000001", Result: ResultSuccess},
-		{ActorType: ActorTypeUser, ActorUserID: 7, Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: Result("BAD")},
-		{ActorType: ActorTypeUser, ActorUserID: 7, Action: ActionUpdate, TargetRefCode: "bad", Result: ResultSuccess},
-		{ActorType: ActorTypeAnonymous, Action: ActionLogin, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
-		{ActorType: ActorTypeSystem, Action: ActionExport, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess, SourceIP: " "},
+		{ActorRefCode: auth.AdministratorRefCode, Action: Action("BAD"), TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "NTE-00000001", Result: Result("BAD")},
+		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "bad", Result: ResultSuccess},
+		{ActorRefCode: auth.AdministratorRefCode, Action: ActionUpdate, TargetRefCode: "USR-00000002", Result: ResultSuccess},
+		{ActorRefCode: SystemTargetRefCode, Action: ActionLogin, TargetRefCode: "NTE-00000001", Result: ResultSuccess},
+		{ActorRefCode: SystemTargetRefCode, Action: ActionExport, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess, SourceIP: " "},
 	}
 
 	for _, event := range tests {
@@ -91,7 +92,7 @@ func TestServiceRecordStandaloneUsesAuditTransaction(t *testing.T) {
 	service := NewService(repo, runner)
 
 	err := service.RecordStandalone(context.Background(), Event{
-		ActorType: ActorTypeSystem, Action: ActionExport, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess,
+		ActorRefCode: SystemTargetRefCode, Action: ActionExport, TargetRefCode: SystemTargetRefCode, Result: ResultSuccess,
 	})
 	if err != nil {
 		t.Fatalf("RecordStandalone error = %v", err)
@@ -117,34 +118,34 @@ func TestServiceRecordAuthenticationBuildsAuthenticationEvents(t *testing.T) {
 	repo := &fakeRepository{}
 	service := NewService(repo, platformdb.NoopTransactionRunner{})
 
-	if err := service.RecordAuthentication(context.Background(), 0, string(ActionLogin), string(ResultDenied), "bad_token"); err != nil {
-		t.Fatalf("anonymous authentication audit: %v", err)
+	if err := service.RecordAuthentication(context.Background(), SystemTargetRefCode, string(ActionLogin), string(ResultDenied), "bad_token"); err != nil {
+		t.Fatalf("denied authentication audit: %v", err)
 	}
-	if err := service.RecordAuthentication(context.Background(), 7, string(ActionLogout), string(ResultSuccess), ""); err != nil {
-		t.Fatalf("user authentication audit: %v", err)
+	if err := service.RecordAuthentication(context.Background(), auth.AdministratorRefCode, string(ActionLogout), string(ResultSuccess), ""); err != nil {
+		t.Fatalf("administrator authentication audit: %v", err)
 	}
-	if repo.inserted[0].ActorType != ActorTypeAnonymous || repo.inserted[0].TargetRefCode != SystemTargetRefCode {
-		t.Fatalf("anonymous auth event = %#v", repo.inserted[0])
+	if repo.inserted[0].ActorRefCode != SystemTargetRefCode || repo.inserted[0].TargetRefCode != SystemTargetRefCode {
+		t.Fatalf("denied auth event = %#v", repo.inserted[0])
 	}
-	if repo.inserted[1].ActorType != ActorTypeUser || repo.inserted[1].ActorUserID != 7 {
-		t.Fatalf("user auth event = %#v", repo.inserted[1])
+	if repo.inserted[1].ActorRefCode != auth.AdministratorRefCode {
+		t.Fatalf("administrator auth event = %#v", repo.inserted[1])
 	}
 }
 
-func TestServiceListsOnlyForSuperuser(t *testing.T) {
+func TestServiceListsOnlyForAdministrator(t *testing.T) {
 	service := NewService(&fakeRepository{}, platformdb.NoopTransactionRunner{})
-	if _, err := service.List(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, Query{}); !errors.Is(err, auth.ErrForbidden) {
-		t.Fatalf("ordinary user list error = %v, want forbidden", err)
+	if _, err := service.List(context.Background(), auth.Principal{ID: 1, RefCode: "KEY-00000001", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataRead}}, Query{}); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("api key list error = %v, want forbidden", err)
 	}
-	if _, err := service.List(context.Background(), auth.Principal{ID: 1, Role: auth.RoleSuperuser}, Query{}); err != nil {
-		t.Fatalf("superuser list: %v", err)
+	if _, err := service.List(context.Background(), auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, Query{}); err != nil {
+		t.Fatalf("administrator list: %v", err)
 	}
 }
 
 func TestServiceListNormalizesAndValidatesQuery(t *testing.T) {
 	repo := &fakeRepository{}
 	service := NewService(repo, platformdb.NoopTransactionRunner{})
-	actor := auth.Principal{ID: 1, Role: auth.RoleSuperuser}
+	actor := auth.Principal{ID: 1, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 
 	if _, err := service.List(context.Background(), actor, Query{
 		TargetRefCode: " nte-00000001 ",

@@ -1,34 +1,64 @@
--- This file defines typed authentication user queries for sqlc generation.
+-- This file defines typed administrator and API key queries for sqlc generation.
 
--- name: FindUserByUsername :one
-SELECT id, username, COALESCE(email, '') AS email, role, password_hash
+-- name: FindAdministratorByUsername :one
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
 FROM users
-WHERE username = $1;
+WHERE username = $1
+  AND ref_code = 'USR-00000001';
 
--- name: FindUserByID :one
-SELECT id, username, COALESCE(email, '') AS email, role, password_hash
+-- name: FindAdministratorByRefCode :one
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
 FROM users
-WHERE id = $1;
+WHERE ref_code = $1;
 
--- name: CreateUser :one
-INSERT INTO users (username, email, role, password_hash)
-VALUES (sqlc.arg(username), sqlc.narg(email), sqlc.arg(role), sqlc.arg(password_hash))
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash;
+-- name: FindAdministrator :one
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
+FROM users
+WHERE ref_code = 'USR-00000001';
 
--- name: CreateUserIfMissing :exec
-INSERT INTO users (username, role, password_hash)
-VALUES ($1, $2, $3)
-ON CONFLICT (username) DO NOTHING;
+-- name: CreateAdministratorIfMissing :exec
+INSERT INTO users (ref_code, username, password_hash)
+VALUES ('USR-00000001', $1, $2)
+ON CONFLICT (ref_code) DO NOTHING;
 
--- name: UpdateUserProfile :one
+-- name: UpdateAdministratorProfile :one
 UPDATE users
 SET username = sqlc.arg(username),
     email = sqlc.narg(email)
-WHERE id = sqlc.arg(id)
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash;
+WHERE ref_code = 'USR-00000001'
+RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash;
 
--- name: UpdateUserPassword :one
+-- name: UpdateAdministratorPassword :one
 UPDATE users
 SET password_hash = sqlc.arg(password_hash)
-WHERE id = sqlc.arg(id)
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash;
+WHERE ref_code = 'USR-00000001'
+RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash;
+
+-- name: CreateAPIKey :one
+INSERT INTO api_keys (ref_code, name, key_prefix, key_hash, scopes, expires_at)
+VALUES (sqlc.arg(ref_code), sqlc.arg(name), sqlc.arg(key_prefix), sqlc.arg(key_hash), sqlc.arg(scopes), sqlc.narg(expires_at))
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at;
+
+-- name: UseAPIKey :one
+UPDATE api_keys
+SET last_used_at = GREATEST(COALESCE(last_used_at, '-infinity'::timestamptz), clock_timestamp())
+WHERE key_hash = $1
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > NOW())
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at;
+
+-- name: FindAPIKeyByRefCode :one
+SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+WHERE ref_code = $1;
+
+-- name: ListAPIKeys :many
+SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+ORDER BY created_at DESC, ref_code DESC;
+
+-- name: RevokeAPIKey :one
+UPDATE api_keys
+SET revoked_at = COALESCE(revoked_at, NOW())
+WHERE ref_code = $1
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at;

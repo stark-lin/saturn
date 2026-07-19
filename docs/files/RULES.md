@@ -78,7 +78,7 @@ Lists / searches:
 
 ObjectRef metadata search:
   platform/search handler calls platform/ref metadata services
-  platform/ref applies owner-only metadata visibility
+  platform/ref applies shared instance metadata visibility
 ```
 
 SQL bloat control:
@@ -111,12 +111,12 @@ Generated packages must not contain other business module models unused by this 
 Recommended read scopes are kept simple:
 
 ```text
-superuser: all
-owner: owner_id = actor_id
-shared: exists share row
+administrator: all
+API key data:read: shared instance reads
+API key data:write: shared instance reads and writes
 ```
 
-Object `status` is only used for status projection, not for relaxing read scopes. If owner/shared is insufficient later, a unified authorization table (e.g., `resource_grants`) can be considered. The current baseline does not introduce general ACL expression systems.
+Object `status` is only used for status projection, not for relaxing API-key scopes. The current single-instance baseline does not introduce users, sharing rows, resource grants, or general ACL expression systems.
 
 ### 18.5 Prohibited Dependencies
 
@@ -280,7 +280,7 @@ Common fields:
 
 ```text
 request_id
-actor_id
+actor_ref_code
 module
 operation
 resource_type

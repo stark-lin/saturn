@@ -34,7 +34,7 @@ func TestNewModuleBuildsFilesDependencies(t *testing.T) {
 
 func TestServiceCreatesCollectionAndFileWithHashes(t *testing.T) {
 	service, repo, references, _, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{
 		Name: "Receipts", Description: "Tax year", Tags: []string{" tax ", "", "tax", "receipt"},
@@ -103,7 +103,7 @@ func TestServiceCreatesCollectionAndFileWithHashes(t *testing.T) {
 
 func TestServiceCreateFileCleansStagingWhenTransactionFails(t *testing.T) {
 	service, repo, _, audits, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -132,7 +132,7 @@ func TestServiceCreateFileCleansStagingWhenTransactionFails(t *testing.T) {
 
 func TestServiceCreateFileCleansFinalWhenPromoteFailsAfterMove(t *testing.T) {
 	service, _, _, audits, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -161,7 +161,7 @@ func TestServiceCreateFileCleansFinalWhenPromoteFailsAfterMove(t *testing.T) {
 
 func TestServiceAuditsSuccessfulDownload(t *testing.T) {
 	service, _, _, audits, _ := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -197,7 +197,7 @@ func TestServiceAuditsSuccessfulDownload(t *testing.T) {
 
 func TestServiceRejectsDownloadWhenStoredBlobHashDiffers(t *testing.T) {
 	service, _, _, audits, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -245,7 +245,7 @@ func TestServiceRejectsDownloadWhenEitherStoredHashDiffers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			service, repo, _, audits, _ := newTestService()
-			actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+			actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 			collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 			if err != nil {
 				t.Fatalf("create collection: %v", err)
@@ -273,7 +273,7 @@ func TestServiceRejectsDownloadWhenEitherStoredHashDiffers(t *testing.T) {
 
 func TestServiceDeletesCollectionThroughUnifiedFileDeleteReason(t *testing.T) {
 	service, repo, references, audits, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -313,7 +313,7 @@ func TestServiceDeletesCollectionThroughUnifiedFileDeleteReason(t *testing.T) {
 
 func TestServiceDeletesSingleFileWithDirectReason(t *testing.T) {
 	service, repo, _, audits, storage := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)

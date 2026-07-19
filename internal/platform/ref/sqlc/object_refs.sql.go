@@ -64,28 +64,21 @@ func (q *Queries) FindObjectRefByCode(ctx context.Context, refCode string) (Obje
 	return i, err
 }
 
-const listRecentObjectRefsByOwner = `-- name: ListRecentObjectRefsByOwner :many
+const listRecentObjectRefs = `-- name: ListRecentObjectRefs :many
 SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
-WHERE owner_id = $1
 ORDER BY updated_at DESC, ref_code DESC
-LIMIT $2
+LIMIT $1
 `
 
-type ListRecentObjectRefsByOwnerParams struct {
-	OwnerID int64
-	Limit   int32
-}
-
-// ListRecentObjectRefsByOwner
+// ListRecentObjectRefs
 //
 //	SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 //	FROM object_refs
-//	WHERE owner_id = $1
 //	ORDER BY updated_at DESC, ref_code DESC
-//	LIMIT $2
-func (q *Queries) ListRecentObjectRefsByOwner(ctx context.Context, arg ListRecentObjectRefsByOwnerParams) ([]ObjectRef, error) {
-	rows, err := q.db.QueryContext(ctx, listRecentObjectRefsByOwner, arg.OwnerID, arg.Limit)
+//	LIMIT $1
+func (q *Queries) ListRecentObjectRefs(ctx context.Context, limit int32) ([]ObjectRef, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentObjectRefs, limit)
 	if err != nil {
 		return nil, err
 	}

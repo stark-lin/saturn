@@ -145,7 +145,7 @@ Generate ref codes
 Register object references
 Resolve ref codes
 Validate ref codes
-Provide owner-only metadata queries
+Provide shared instance metadata queries
 Support cross-module associations
 Support LLM referencing
 ```
@@ -172,7 +172,7 @@ NTE RefCode namespace
 
 Creating a Note claims one NTE code for each object. Every update claims a new NTE code for a new `version-obj`; the `nte-obj` then advances its current pointer. The API does not restore old content, and hard deletion permanently removes the logical and version ObjectRefs.
 
-Global metadata queries provide owner-only exact reference code queries, JSON body condition queries, and recent updates lists. Exact queries use the RESTful ObjectRef metadata endpoint:
+Global metadata queries provide instance-wide exact reference code queries, JSON body condition queries, and recent updates lists. Exact queries use the RESTful ObjectRef metadata endpoint:
 
 ```http
 GET /api/platform/object-refs/NTE-00000001
@@ -194,7 +194,7 @@ Authorization: Bearer <token>
 
 Compatibility with the old endpoint `GET /api/platform/search?ref_code=NTE-00000001` is temporarily retained; new clients should use `/api/platform/object-refs/{ref_code}`.
 
-Clients can query the current owner's metadata collection using a JSON request body:
+Clients can query the instance metadata collection using a JSON request body:
 
 ```http
 POST /api/platform/object-refs/search
@@ -226,7 +226,7 @@ Content-Type: application/json
 
 The response is a metadata JSON list; when there are no results, it returns `[]`.
 
-Clients can request the current owner's recently updated metadata:
+Clients can request the instance's recently updated metadata:
 
 ```http
 GET /api/platform/recent-objects?limit=10
@@ -251,7 +251,7 @@ Authorization: Bearer <token>
 }
 ```
 
-These endpoints use the same metadata representation: all registered objects return `title` and `tags`; tagless objects return `"tags": []`, and tag names retain the first-occurrence order after server-side normalization. In business object responses, wherever `ref_code` is returned, `tags` must also be returned; `SYS-00000000` is only used for system-level audit targets, is not registered in `object_refs`, and does not require tags. The recently updated list is fixedly sorted by `object_refs.updated_at DESC, ref_code DESC`, with `limit` defaulting to `10` and restricted to `1..50`. JSON body conditional queries support module/object_type/status in, all-tags, created_at/updated_at range, created_at/updated_at/ref_code sort, and `limit`, defaulting to a maximum of `50` returned items with an upper limit of `100`. Responses do not return real business objects, owner IDs, internal object ids, or business detail URLs. `status` is not involved in authorization; regardless of status or actor role, only objects whose `owner_id` matches the current actor ID can be read from these endpoints; other exact queries uniformly appear as non-existent, and list queries do not contain unreadable objects.
+These endpoints use the same metadata representation: all registered objects return `title` and `tags`; tagless objects return `"tags": []`, and tag names retain the first-occurrence order after server-side normalization. In business object responses, wherever `ref_code` is returned, `tags` must also be returned; `SYS-00000000` is only used for system-level audit targets, is not registered in `object_refs`, and does not require tags. The recently updated list is fixedly sorted by `object_refs.updated_at DESC, ref_code DESC`, with `limit` defaulting to `10` and restricted to `1..50`. JSON body conditional queries support module/object_type/status in, all-tags, created_at/updated_at range, created_at/updated_at/ref_code sort, and `limit`, defaulting to a maximum of `50` returned items with an upper limit of `100`. Responses do not return real business objects, singleton anchor IDs, internal object ids, or business detail URLs. Reads require `data:read`; object status does not grant additional access.
 
 ---
 
@@ -268,7 +268,7 @@ Does not treat ref code strings as source business content or status encoding
 Does not let platform/ref directly understand business module table structures
 ```
 
-Metadata queries perform owner-only isolation. Parsing a ref code only yields metadata positioning clues; reading the actual object still goes through the corresponding module's service / facade.
+Metadata queries operate on shared instance data. Parsing a ref code only yields metadata positioning clues; reading the actual object still goes through the corresponding module's service / facade and scope checks.
 
 ---
 

@@ -1,11 +1,10 @@
-// This file exposes authentication REST endpoints.
+// This file exposes administrator-session and API-key REST endpoints.
 package auth
 
 import (
 	"errors"
 	"net/http"
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/stark-lin/saturn/internal/platform/httpx"
 )
@@ -19,25 +18,20 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type CreateUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     Role   `json:"role"`
-}
-
-type UpdateOwnUserRequest struct {
+type UpdateAdministratorRequest struct {
 	Username *string `json:"username"`
 	Email    *string `json:"email"`
 }
 
-type ChangeOwnPasswordRequest struct {
+type ChangeAdministratorPasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
 }
 
-type ResetUserPasswordRequest struct {
-	Password string `json:"password"`
+type CreateAPIKeyRequest struct {
+	Name      string      `json:"name"`
+	Scopes    []ScopeName `json:"scopes"`
+	ExpiresAt *time.Time  `json:"expires_at"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -76,19 +70,18 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var request UpdateOwnUserRequest
+	var request UpdateAdministratorRequest
 	if err := httpx.BindJSON(r, &request); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid account update request")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid administrator update request")
 		return
 	}
-	user, err := h.service.UpdateOwnUser(r.Context(), principal, UpdateOwnUserInput{
-		Username: request.Username,
-		Email:    request.Email,
+	administrator, err := h.service.UpdateAdministrator(r.Context(), principal, UpdateAdministratorInput{
+		Username: request.Username, Email: request.Email,
 	})
 	if h.writeServiceError(w, err) {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"user": user})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"user": administrator})
 }
 
 func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
@@ -96,14 +89,13 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var request ChangeOwnPasswordRequest
+	var request ChangeAdministratorPasswordRequest
 	if err := httpx.BindJSON(r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid password update request")
 		return
 	}
-	err := h.service.ChangeOwnPassword(r.Context(), principal, ChangeOwnPasswordInput{
-		CurrentPassword: request.CurrentPassword,
-		NewPassword:     request.NewPassword,
+	err := h.service.ChangeAdministratorPassword(r.Context(), principal, ChangeAdministratorPasswordInput{
+		CurrentPassword: request.CurrentPassword, NewPassword: request.NewPassword,
 	})
 	if h.writeServiceError(w, err) {
 		return
@@ -111,50 +103,61 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"password_updated": true})
 }
 
-func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	principal, ok := authenticatedPrincipal(w, r)
 	if !ok {
 		return
 	}
-	var request CreateUserRequest
+	var request CreateAPIKeyRequest
 	if err := httpx.BindJSON(r, &request); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid user creation request")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid API key request")
 		return
 	}
-	user, err := h.service.CreateUser(r.Context(), principal, CreateUserInput{
-		Username: request.Username,
-		Email:    request.Email,
-		Password: request.Password,
-		Role:     request.Role,
+	result, err := h.service.CreateAPIKey(r.Context(), principal, CreateAPIKeyInput{
+		Name: request.Name, Scopes: request.Scopes, ExpiresAt: request.ExpiresAt,
 	})
 	if h.writeServiceError(w, err) {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusCreated, map[string]any{"user": user})
+	httpx.WriteJSON(w, http.StatusCreated, result)
 }
 
-func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	principal, ok := authenticatedPrincipal(w, r)
 	if !ok {
 		return
 	}
-	targetUserID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("id")), 10, 64)
-	if err != nil || targetUserID < 1 {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid user id")
+	keys, err := h.service.ListAPIKeys(r.Context(), principal)
+	if h.writeServiceError(w, err) {
 		return
 	}
-	var request ResetUserPasswordRequest
-	if err := httpx.BindJSON(r, &request); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid password reset request")
+	if keys == nil {
+		keys = []APIKey{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"api_keys": keys})
+}
+
+func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticatedPrincipal(w, r)
+	if !ok {
 		return
 	}
-	if err := h.service.ResetUserPassword(r.Context(), principal, targetUserID, request.Password); h.writeServiceError(w, err) {
+	key, err := h.service.RevokeAPIKey(r.Context(), principal, r.PathValue("refcode"))
+	if h.writeServiceError(w, err) {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"password_updated": true})
+	httpx.WriteJSON(w, http.StatusOK, key)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticatedPrincipal(w, r)
+	if !ok {
+		return
+	}
+	if !principal.IsAdministrator() {
+		httpx.WriteError(w, http.StatusForbidden, "forbidden", "Administrator access is required")
+		return
+	}
 	token, err := BearerToken(r)
 	if err != nil {
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
@@ -188,14 +191,14 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
 	case errors.Is(err, ErrInvalidCredentials):
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid username or password")
-	case errors.Is(err, ErrInvalidUser):
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid account request")
+	case errors.Is(err, ErrInvalidAdministrator), errors.Is(err, ErrInvalidAPIKey):
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Invalid authentication request")
 	case errors.Is(err, ErrForbidden):
-		httpx.WriteError(w, http.StatusForbidden, "forbidden", "Superuser access is required")
-	case errors.Is(err, ErrUserNotFound):
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "User not found")
-	case errors.Is(err, ErrUserConflict):
-		httpx.WriteError(w, http.StatusConflict, "conflict", "Username or email already exists")
+		httpx.WriteError(w, http.StatusForbidden, "forbidden", "Administrator access is required")
+	case errors.Is(err, ErrAdministratorNotFound), errors.Is(err, ErrAPIKeyNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "Authentication resource not found")
+	case errors.Is(err, ErrAdministratorConflict), errors.Is(err, ErrAPIKeyConflict):
+		httpx.WriteError(w, http.StatusConflict, "conflict", "Administrator or API key name already exists")
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "authentication_unavailable", "Authentication is unavailable")
 	}

@@ -3,3 +3,20 @@
 //   sqlc v1.31.1
 
 package authsqlc
+
+import (
+	"database/sql"
+	"time"
+)
+
+type ApiKey struct {
+	RefCode    string
+	Name       string
+	KeyPrefix  string
+	KeyHash    string
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt sql.NullTime
+	ExpiresAt  sql.NullTime
+	RevokedAt  sql.NullTime
+}

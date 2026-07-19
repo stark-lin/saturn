@@ -5,10 +5,10 @@ import "time"
 
 type User struct {
 	ID           int64
+	RefCode      string
 	Username     string
 	Email        string
 	DisplayName  string
-	Role         Role
 	PasswordHash string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

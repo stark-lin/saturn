@@ -51,8 +51,8 @@ func TestCalendarEndsAtMigrationWithPostgreSQL(t *testing.T) {
 
 	var ownerID int64
 	if err := handle.DB.QueryRowContext(ctx, `
-INSERT INTO users (username, role, password_hash)
-VALUES ('calendar-migration', 'user', 'hash')
+INSERT INTO users (ref_code, username, password_hash)
+VALUES ('USR-00000001', 'calendar-migration', 'hash')
 RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert migration user: %v", err)
 	}

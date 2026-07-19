@@ -140,13 +140,13 @@ func (r *SQLRepository) CreateRequest(ctx context.Context, ownerID int64, sessio
 	var request Request
 	var completedAt sql.NullTime
 	err = executor.QueryRowContext(ctx, `
-INSERT INTO llm_requests (owner_id, session_id, actor_user_id, prompt, model, max_tokens, context_json, request_json)
+INSERT INTO llm_requests (owner_id, session_id, actor_ref_code, prompt, model, max_tokens, context_json, request_json)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, owner_id, session_id, actor_user_id, prompt, model, max_tokens, context_json, request_json,
+RETURNING id, owner_id, session_id, actor_ref_code, prompt, model, max_tokens, context_json, request_json,
           response_status, content, error_code, error_message, response_json,
           created_at, updated_at, completed_at`,
-		ownerID, sessionID, input.ActorUserID, input.Prompt, input.Model, input.MaxTokens, jsonArgument(input.ContextJSON), jsonArgument(input.RequestJSON)).Scan(
-		&request.ID, &request.OwnerID, &request.SessionID, &request.ActorUserID, &request.Prompt, &request.Model,
+		ownerID, sessionID, input.ActorRefCode, input.Prompt, input.Model, input.MaxTokens, jsonArgument(input.ContextJSON), jsonArgument(input.RequestJSON)).Scan(
+		&request.ID, &request.OwnerID, &request.SessionID, &request.ActorRefCode, &request.Prompt, &request.Model,
 		&request.MaxTokens, &request.ContextJSON, &request.RequestJSON, &request.ResponseStatus,
 		&request.ResponseContent, &request.ResponseErrorCode, &request.ResponseErrorMessage,
 		&request.ResponseJSON, &request.CreatedAt, &request.UpdatedAt, &completedAt,
@@ -279,12 +279,12 @@ updated AS (
         updated_at = NOW()
     FROM candidate
     WHERE request.id = candidate.id
-    RETURNING request.id, request.owner_id, request.session_id, request.actor_user_id,
+    RETURNING request.id, request.owner_id, request.session_id, request.actor_ref_code,
               request.prompt, request.model, request.max_tokens, request.context_json, request.request_json,
               request.response_status, request.content, request.error_code, request.error_message, request.response_json,
               request.created_at, request.updated_at, request.completed_at
 )
-SELECT updated.id, updated.owner_id, updated.session_id, updated.actor_user_id, request_ref.id, request_ref.ref_code, request_ref.tags,
+SELECT updated.id, updated.owner_id, updated.session_id, updated.actor_ref_code, request_ref.id, request_ref.ref_code, request_ref.tags,
        updated.prompt, updated.model, updated.max_tokens, updated.context_json, updated.request_json,
        updated.response_status, updated.content, updated.error_code, updated.error_message, updated.response_json,
        updated.created_at, updated.updated_at, updated.completed_at
@@ -429,7 +429,7 @@ func scanRequestWithRef(row rowScanner) (Request, error) {
 	var request Request
 	var completedAt sql.NullTime
 	err := row.Scan(
-		&request.ID, &request.OwnerID, &request.SessionID, &request.ActorUserID, &request.ObjectRefID,
+		&request.ID, &request.OwnerID, &request.SessionID, &request.ActorRefCode, &request.ObjectRefID,
 		&request.RefCode, pq.Array(&request.Tags), &request.Prompt, &request.Model, &request.MaxTokens,
 		&request.ContextJSON, &request.RequestJSON, &request.ResponseStatus,
 		&request.ResponseContent, &request.ResponseErrorCode, &request.ResponseErrorMessage,
@@ -452,7 +452,7 @@ JOIN object_refs AS session_ref
 `
 
 const requestBaseSQL = `
-SELECT request.id, request.owner_id, request.session_id, request.actor_user_id, request_ref.id, request_ref.ref_code, request_ref.tags,
+SELECT request.id, request.owner_id, request.session_id, request.actor_ref_code, request_ref.id, request_ref.ref_code, request_ref.tags,
        request.prompt, request.model, request.max_tokens, request.context_json, request.request_json,
        request.response_status, request.content, request.error_code, request.error_message, request.response_json,
        request.created_at, request.updated_at, request.completed_at

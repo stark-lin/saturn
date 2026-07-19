@@ -5,8 +5,8 @@ CREATE TABLE system_settings (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE user_preferences (
-    user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE instance_preferences (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
     language TEXT NOT NULL,
     timezone TEXT NOT NULL,
     theme TEXT NOT NULL,

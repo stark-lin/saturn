@@ -25,7 +25,7 @@ func TestNewModuleBuildsCalendarDependencies(t *testing.T) {
 func TestServiceCreatesEmptyEventAggregateWithRefsAndTags(t *testing.T) {
 	service, _, references, audits := newTestService()
 
-	detail, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	detail, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: " Sprint ", Description: " Planning "},
 		Tags:     []string{" work ", "calendar", "work"},
 	})
@@ -73,7 +73,7 @@ END:VEVENT
 END:VCALENDAR
 `
 
-	detail, err := service.ImportEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, ImportEventAggregateInput{
+	detail, err := service.ImportEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, ImportEventAggregateInput{
 		Title: "Imported calendar",
 		Body:  strings.NewReader(input),
 	})
@@ -101,7 +101,7 @@ END:VCALENDAR
 
 func TestServiceCreatesEventUnderAggregateWithRefsEndTimeAndTags(t *testing.T) {
 	service, repo, references, audits := newTestService()
-	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Sprint"},
 		Tags:     []string{" work "},
 	})
@@ -112,7 +112,7 @@ func TestServiceCreatesEventUnderAggregateWithRefsEndTimeAndTags(t *testing.T) {
 	startsAt := time.Date(2026, time.June, 1, 9, 30, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.June, 1, 10, 15, 0, 0, time.UTC)
 
-	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.Aggregate.RefCode, CreateEventInput{
 		Metadata: EventMetadata{Title: "Planning"},
 		Tags:     []string{" meeting ", "meeting"},
 		StartsAt: startsAt,
@@ -148,7 +148,7 @@ func TestServiceExpandsWeekRecurrenceByCount(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.June, 1, 10, 0, 0, 0, time.UTC)
-	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Training"},
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func TestServiceExpandsWeekRecurrenceByCount(t *testing.T) {
 	}
 	repo.storeAggregate(aggregate.Aggregate)
 
-	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.Aggregate.RefCode, CreateEventInput{
 		Metadata: EventMetadata{Title: "Training block"},
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
@@ -190,7 +190,7 @@ func TestServiceExpandsWeekRecurrenceWithTemplateEndClockAndDayOffset(t *testing
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.June, 1, 23, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.June, 2, 1, 30, 0, 0, time.UTC)
-	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Overnight work"},
 	})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestServiceExpandsWeekRecurrenceWithTemplateEndClockAndDayOffset(t *testing
 	}
 	repo.storeAggregate(aggregate.Aggregate)
 
-	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.Aggregate.RefCode, CreateEventInput{
 		Metadata: EventMetadata{Title: "Overnight block"},
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
@@ -228,7 +228,7 @@ func TestServiceExpandsMonthRecurrenceWithClampedMonthEnd(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2026, time.January, 31, 9, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2026, time.January, 31, 10, 0, 0, 0, time.UTC)
-	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Month end"},
 	})
 	if err != nil {
@@ -236,7 +236,7 @@ func TestServiceExpandsMonthRecurrenceWithClampedMonthEnd(t *testing.T) {
 	}
 	repo.storeAggregate(aggregate.Aggregate)
 
-	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.Aggregate.RefCode, CreateEventInput{
 		Metadata: EventMetadata{Title: "Month end review"},
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
@@ -266,7 +266,7 @@ func TestServiceExpandsYearRecurrenceWithClampedLeapDay(t *testing.T) {
 	service, repo, _, _ := newTestService()
 	startsAt := time.Date(2024, time.February, 29, 9, 0, 0, 0, time.UTC)
 	endsAt := time.Date(2024, time.February, 29, 10, 0, 0, 0, time.UTC)
-	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateEventAggregateInput{
+	aggregate, err := service.CreateEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateEventAggregateInput{
 		Metadata: EventAggregateMetadata{Title: "Leap day"},
 	})
 	if err != nil {
@@ -274,7 +274,7 @@ func TestServiceExpandsYearRecurrenceWithClampedLeapDay(t *testing.T) {
 	}
 	repo.storeAggregate(aggregate.Aggregate)
 
-	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.Aggregate.RefCode, CreateEventInput{
+	detail, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.Aggregate.RefCode, CreateEventInput{
 		Metadata: EventMetadata{Title: "Leap day review"},
 		StartsAt: startsAt,
 		EndsAt:   endsAt,
@@ -313,7 +313,7 @@ func TestServiceRejectsEventEndAtOrBeforeStart(t *testing.T) {
 			service, repo, _, _ := newTestService()
 			aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Invalid time"}}
 			repo.storeAggregate(aggregate)
-			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
+			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.RefCode, CreateEventInput{
 				Metadata: EventMetadata{Title: "Invalid event"},
 				StartsAt: time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC),
 				EndsAt:   tt.endsAt,
@@ -339,7 +339,7 @@ func TestServiceVoidsEventAndKeepsItOutOfMainViewButInAggregateEvents(t *testing
 	repo.storeAggregate(aggregate)
 	repo.storeEvent(event)
 
-	voided, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode)
+	voided, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode)
 	if err != nil {
 		t.Fatalf("void event: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestServiceVoidsEventAndKeepsItOutOfMainViewButInAggregateEvents(t *testing
 		t.Fatalf("void audit = %#v", audits.successes[0])
 	}
 
-	view, err := service.CalendarView(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CalendarViewQuery{
+	view, err := service.CalendarView(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CalendarViewQuery{
 		From: event.StartsAt.Add(-time.Hour), To: event.StartsAt.Add(time.Hour), Limit: 25,
 	})
 	if err != nil {
@@ -359,14 +359,14 @@ func TestServiceVoidsEventAndKeepsItOutOfMainViewButInAggregateEvents(t *testing
 	if len(view.Events) != 0 {
 		t.Fatalf("voided event appeared in main view: %#v", view.Events)
 	}
-	detail, err := service.GetEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode)
+	detail, err := service.GetEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.RefCode)
 	if err != nil {
 		t.Fatalf("get aggregate: %v", err)
 	}
 	if len(detail.Events) != 1 || detail.Events[0].Status != EventStatusVoided {
 		t.Fatalf("aggregate events = %#v, want voided child retained", detail.Events)
 	}
-	if _, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode); !errors.Is(err, ErrEventAlreadyVoided) {
+	if _, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode); !errors.Is(err, ErrEventAlreadyVoided) {
 		t.Fatalf("second void error = %v, want already voided", err)
 	}
 }
@@ -382,7 +382,7 @@ func TestServiceFinishesEventAndKeepsItOutOfMainViewButInAggregateEvents(t *test
 	repo.storeAggregate(aggregate)
 	repo.storeEvent(event)
 
-	finished, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode)
+	finished, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode)
 	if err != nil {
 		t.Fatalf("finish event: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestServiceFinishesEventAndKeepsItOutOfMainViewButInAggregateEvents(t *test
 		t.Fatalf("finish audit = %#v", audits.successes[0])
 	}
 
-	view, err := service.CalendarView(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CalendarViewQuery{
+	view, err := service.CalendarView(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CalendarViewQuery{
 		From: event.StartsAt.Add(-time.Hour), To: event.StartsAt.Add(time.Hour), Limit: 25,
 	})
 	if err != nil {
@@ -402,14 +402,14 @@ func TestServiceFinishesEventAndKeepsItOutOfMainViewButInAggregateEvents(t *test
 	if len(view.Events) != 0 {
 		t.Fatalf("finished event appeared in main view: %#v", view.Events)
 	}
-	detail, err := service.GetEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode)
+	detail, err := service.GetEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.RefCode)
 	if err != nil {
 		t.Fatalf("get aggregate: %v", err)
 	}
 	if len(detail.Events) != 1 || detail.Events[0].Status != EventStatusFinished {
 		t.Fatalf("aggregate events = %#v, want finished child retained", detail.Events)
 	}
-	if _, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode); !errors.Is(err, ErrEventAlreadyFinished) {
+	if _, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode); !errors.Is(err, ErrEventAlreadyFinished) {
 		t.Fatalf("second finish error = %v, want already finished", err)
 	}
 }
@@ -425,7 +425,7 @@ func TestServiceVoidsFinishedEvent(t *testing.T) {
 	repo.storeAggregate(aggregate)
 	repo.storeEvent(event)
 
-	voided, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode)
+	voided, err := service.VoidEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode)
 	if err != nil {
 		t.Fatalf("void finished event: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestServiceRejectsFinishForVoidedEvent(t *testing.T) {
 	repo.storeAggregate(aggregate)
 	repo.storeEvent(event)
 
-	if _, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, event.RefCode); !errors.Is(err, ErrEventAlreadyVoided) {
+	if _, err := service.FinishEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, event.RefCode); !errors.Is(err, ErrEventAlreadyVoided) {
 		t.Fatalf("finish voided error = %v, want already voided", err)
 	}
 }
@@ -456,7 +456,7 @@ func TestServiceDeletesEventAggregateAndAllEventReferences(t *testing.T) {
 	repo.storeEvent(Event{ID: 2, OwnerID: 7, AggregateID: 1, RefCode: "CAL-00000002", Status: EventStatusScheduled})
 	repo.storeEvent(Event{ID: 3, OwnerID: 7, AggregateID: 1, RefCode: "CAL-00000003", Status: EventStatusVoided})
 
-	if err := service.DeleteEventAggregate(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode); err != nil {
+	if err := service.DeleteEventAggregate(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.RefCode); err != nil {
 		t.Fatalf("delete event aggregate: %v", err)
 	}
 	if _, exists := repo.aggregates[aggregate.ID]; exists || len(repo.events) != 0 {
@@ -496,7 +496,7 @@ func TestServiceRejectsInvalidRecurrenceBeforeWriting(t *testing.T) {
 			aggregate := EventAggregate{ID: 1, OwnerID: 7, RefCode: "CAL-00000001", Metadata: EventAggregateMetadata{Title: "Bad recurrence"}}
 			repo.storeAggregate(aggregate)
 			startsAt := time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)
-			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, aggregate.RefCode, CreateEventInput{
+			_, err := service.CreateEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, aggregate.RefCode, CreateEventInput{
 				Metadata:   EventMetadata{Title: "Bad event"},
 				StartsAt:   startsAt,
 				EndsAt:     startsAt.Add(30 * time.Minute),
@@ -523,22 +523,22 @@ func TestServiceListsAggregatesAndGetsEvent(t *testing.T) {
 	repo.storeAggregate(aggregate)
 	repo.storeEvent(event)
 
-	page, err := service.ListEventAggregates(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, EventAggregateQuery{Limit: 5})
+	page, err := service.ListEventAggregates(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, EventAggregateQuery{Limit: 5})
 	if err != nil {
 		t.Fatalf("list aggregates: %v", err)
 	}
 	if len(page.Aggregates) != 1 || page.Aggregates[0].RefCode != aggregate.RefCode || page.Limit != 5 {
 		t.Fatalf("aggregate page = %#v", page)
 	}
-	gotEvent, err := service.GetEvent(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, "CAL-00000002")
+	gotEvent, err := service.GetEvent(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, "CAL-00000002")
 	if err != nil {
 		t.Fatalf("get event: %v", err)
 	}
 	if gotEvent.RefCode != event.RefCode || gotEvent.Metadata.Title != "Shift block" {
 		t.Fatalf("event = %#v", gotEvent)
 	}
-	if _, err := service.GetEvent(context.Background(), auth.Principal{ID: 8, Role: auth.RoleUser}, "CAL-00000002"); !errors.Is(err, ErrEventNotFound) {
-		t.Fatalf("other owner get error = %v, want not found", err)
+	if _, err := service.GetEvent(context.Background(), auth.Principal{ID: 8, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, "CAL-00000002"); err != nil {
+		t.Fatalf("shared instance get error = %v", err)
 	}
 }
 

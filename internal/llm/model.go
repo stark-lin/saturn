@@ -37,7 +37,7 @@ type Request struct {
 	ID                   int64
 	OwnerID              int64
 	SessionID            int64
-	ActorUserID          int64
+	ActorRefCode         string
 	ObjectRefID          int64
 	RefCode              string
 	Prompt               string
@@ -116,12 +116,12 @@ type CreateRequestInput struct {
 }
 
 type PersistedRequestInput struct {
-	ActorUserID int64
-	Prompt      string
-	Model       string
-	MaxTokens   int
-	ContextJSON json.RawMessage
-	RequestJSON json.RawMessage
+	ActorRefCode string
+	Prompt       string
+	Model        string
+	MaxTokens    int
+	ContextJSON  json.RawMessage
+	RequestJSON  json.RawMessage
 }
 
 type CompleteResponseInput struct {

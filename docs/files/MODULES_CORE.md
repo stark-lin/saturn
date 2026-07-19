@@ -481,7 +481,7 @@ DB: Database connection, migration execution, and transaction encapsulation
 HTTPX: Request binding, response, error, and SSE encapsulation
 Logger: structured logging encapsulation
 Redis: Redis client setup used by auth sessions
-ObjectRef: Unified readable object reference codes, title/status projection, registration, resolution, and owner-only metadata
+ObjectRef: Unified readable object reference codes, title/status projection, registration, resolution, and shared instance metadata
 Tag: Maintains tag associations for the same ObjectRef object that can be returned with metadata
 Search: ObjectRef metadata HTTP handlers and compatibility search endpoint
 Storage: local filesystem storage abstraction, usage, diagnostics, object reference management

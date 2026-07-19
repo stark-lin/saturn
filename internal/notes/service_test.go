@@ -41,7 +41,7 @@ func TestParseMarkdownAcceptsTitleBeginningWithHashText(t *testing.T) {
 
 func TestServiceCreateRegistersLogicalAndInitialVersionObjects(t *testing.T) {
 	service, repo, references, audits := newServiceFixture()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 
 	note, err := service.CreateNote(context.Background(), actor, "Release notes\nrelease, notes\n\nCurrent body")
 	if err != nil {
@@ -63,7 +63,7 @@ func TestServiceCreateRegistersLogicalAndInitialVersionObjects(t *testing.T) {
 
 func TestServiceUpdateAppendsVersionAndAdvancesCurrentPointer(t *testing.T) {
 	service, repo, _, _ := newServiceFixture()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	created := mustCreateNote(t, service, actor, "Old\nold\n\nBody")
 
 	updated, err := service.UpdateNote(context.Background(), actor, created.RefCode, "New title\nfresh\n\nReplacement")
@@ -87,7 +87,7 @@ func TestServiceUpdateAppendsVersionAndAdvancesCurrentPointer(t *testing.T) {
 
 func TestServiceHardDeleteRemovesNoteVersionsAndReferences(t *testing.T) {
 	service, repo, references, audits := newServiceFixture()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	created := mustCreateNote(t, service, actor, "Private\nsecret\n\nBody")
 	updated, err := service.UpdateNote(context.Background(), actor, created.RefCode, "Private updated\nsecret\n\nReplacement")
 	if err != nil {
@@ -117,24 +117,35 @@ func TestServiceHardDeleteRemovesNoteVersionsAndReferences(t *testing.T) {
 	}
 }
 
-func TestServiceReadsRemainOwnerOnlyIncludingSuperuser(t *testing.T) {
+func TestServiceReadsAreSharedAcrossAuthenticatedPrincipals(t *testing.T) {
 	service, _, _, _ := newServiceFixture()
-	owner := auth.Principal{ID: 7, Role: auth.RoleUser}
-	created := mustCreateNote(t, service, owner, "Owner note\nprivate\n\nBody")
+	administrator := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
+	created := mustCreateNote(t, service, administrator, "Shared note\ninstance\n\nBody")
 
-	for _, actor := range []auth.Principal{{ID: 8, Role: auth.RoleUser}, {ID: 9, Role: auth.RoleSuperuser}} {
-		if _, err := service.GetNote(context.Background(), actor, created.RefCode); !errors.Is(err, ErrNoteNotFound) {
-			t.Fatalf("actor %#v note error = %v", actor, err)
+	for _, actor := range []auth.Principal{
+		{ID: 8, RefCode: "KEY-4F8A2C10", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataRead}},
+		{ID: 9, RefCode: "KEY-A92D77E1", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataWrite}},
+	} {
+		if note, err := service.GetNote(context.Background(), actor, created.RefCode); err != nil || note.RefCode != created.RefCode {
+			t.Fatalf("actor %#v note = %#v, error = %v", actor, note, err)
 		}
-		if _, err := service.GetVersion(context.Background(), actor, created.CurrentVersionRef); !errors.Is(err, ErrVersionNotFound) {
-			t.Fatalf("actor %#v version error = %v", actor, err)
+		if version, err := service.GetVersion(context.Background(), actor, created.CurrentVersionRef); err != nil || version.RefCode != created.CurrentVersionRef {
+			t.Fatalf("actor %#v version = %#v, error = %v", actor, version, err)
 		}
+	}
+}
+
+func TestServiceReadOnlyAPIKeyCannotMutateNotes(t *testing.T) {
+	service, _, _, _ := newServiceFixture()
+	readOnly := auth.Principal{ID: 7, RefCode: "KEY-4F8A2C10", Kind: auth.PrincipalKindAPIKey, Scopes: []auth.ScopeName{auth.ScopeDataRead}}
+	if _, err := service.CreateNote(context.Background(), readOnly, "Denied\n\nBody"); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("read-only create error = %v, want forbidden", err)
 	}
 }
 
 func TestServiceUpdateMissingNoteRecordsDeniedAudit(t *testing.T) {
 	service, _, _, audits := newServiceFixture()
-	_, err := service.UpdateNote(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, "NTE-00000009", "Title\n\nBody")
+	_, err := service.UpdateNote(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, "NTE-00000009", "Title\n\nBody")
 	if !errors.Is(err, ErrNoteNotFound) {
 		t.Fatalf("update error = %v", err)
 	}
@@ -170,13 +181,10 @@ func newFakeNoteRepository() *fakeNoteRepository {
 	return &fakeNoteRepository{notes: make(map[int64]Note), versions: make(map[int64]Version)}
 }
 
-func (r *fakeNoteRepository) ListNotes(_ context.Context, ownerID int64, query Query) (Page, error) {
+func (r *fakeNoteRepository) ListNotes(_ context.Context, query Query) (Page, error) {
 	notes := make([]Note, 0)
 	for _, note := range r.notes {
 		note = r.hydrateNote(note)
-		if note.OwnerID != ownerID {
-			continue
-		}
 		if query.Text != "" && !strings.Contains(note.Title+note.Markdown, query.Text) {
 			continue
 		}
@@ -193,17 +201,17 @@ func (r *fakeNoteRepository) CreateNote(_ context.Context, ownerID int64) (Note,
 	return note, nil
 }
 
-func (r *fakeNoteRepository) FindNoteByRefCode(_ context.Context, ownerID int64, refCode string) (Note, error) {
+func (r *fakeNoteRepository) FindNoteByRefCode(_ context.Context, refCode string) (Note, error) {
 	for _, note := range r.notes {
-		if note.OwnerID == ownerID && note.RefCode == refCode {
+		if note.RefCode == refCode {
 			return r.hydrateNote(note), nil
 		}
 	}
 	return Note{}, ErrNoteNotFound
 }
 
-func (r *fakeNoteRepository) LockNoteByRefCode(ctx context.Context, ownerID int64, refCode string) (Note, error) {
-	return r.FindNoteByRefCode(ctx, ownerID, refCode)
+func (r *fakeNoteRepository) LockNoteByRefCode(ctx context.Context, refCode string) (Note, error) {
+	return r.FindNoteByRefCode(ctx, refCode)
 }
 
 func (r *fakeNoteRepository) CreateVersion(_ context.Context, input CreateVersionInput) (Version, error) {
@@ -219,17 +227,17 @@ func (r *fakeNoteRepository) CreateVersion(_ context.Context, input CreateVersio
 	return version, nil
 }
 
-func (r *fakeNoteRepository) FindVersionByRefCode(_ context.Context, ownerID int64, refCode string) (Version, error) {
+func (r *fakeNoteRepository) FindVersionByRefCode(_ context.Context, refCode string) (Version, error) {
 	for _, version := range r.versions {
-		if version.OwnerID == ownerID && version.RefCode == refCode {
+		if version.RefCode == refCode {
 			return r.hydrateVersion(version), nil
 		}
 	}
 	return Version{}, ErrVersionNotFound
 }
 
-func (r *fakeNoteRepository) ListVersions(_ context.Context, ownerID int64, noteRefCode string) ([]Version, error) {
-	note, err := r.FindNoteByRefCode(context.Background(), ownerID, noteRefCode)
+func (r *fakeNoteRepository) ListVersions(_ context.Context, noteRefCode string) ([]Version, error) {
+	note, err := r.FindNoteByRefCode(context.Background(), noteRefCode)
 	if err != nil {
 		return nil, err
 	}
@@ -243,9 +251,9 @@ func (r *fakeNoteRepository) ListVersions(_ context.Context, ownerID int64, note
 	return versions, nil
 }
 
-func (r *fakeNoteRepository) SetCurrentVersion(_ context.Context, ownerID int64, noteID int64, versionID int64) error {
+func (r *fakeNoteRepository) SetCurrentVersion(_ context.Context, noteID int64, versionID int64) error {
 	note, ok := r.notes[noteID]
-	if !ok || note.OwnerID != ownerID {
+	if !ok {
 		return ErrNoteNotFound
 	}
 	note.CurrentVersionID = versionID
@@ -254,9 +262,9 @@ func (r *fakeNoteRepository) SetCurrentVersion(_ context.Context, ownerID int64,
 	return nil
 }
 
-func (r *fakeNoteRepository) DeleteNote(_ context.Context, ownerID int64, noteID int64) error {
-	note, ok := r.notes[noteID]
-	if !ok || note.OwnerID != ownerID {
+func (r *fakeNoteRepository) DeleteNote(_ context.Context, noteID int64) error {
+	_, ok := r.notes[noteID]
+	if !ok {
 		return ErrNoteNotFound
 	}
 	delete(r.notes, noteID)

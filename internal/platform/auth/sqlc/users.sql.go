@@ -8,216 +8,381 @@ package authsqlc
 import (
 	"context"
 	"database/sql"
+
+	"github.com/lib/pq"
 )
 
-const createUser = `-- name: CreateUser :one
-INSERT INTO users (username, email, role, password_hash)
-VALUES ($1, $2, $3, $4)
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
+const createAPIKey = `-- name: CreateAPIKey :one
+INSERT INTO api_keys (ref_code, name, key_prefix, key_hash, scopes, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
 `
 
-type CreateUserParams struct {
-	Username     string
-	Email        sql.NullString
-	Role         string
-	PasswordHash string
+type CreateAPIKeyParams struct {
+	RefCode   string
+	Name      string
+	KeyPrefix string
+	KeyHash   string
+	Scopes    []string
+	ExpiresAt sql.NullTime
 }
 
-type CreateUserRow struct {
-	ID           int64
-	Username     string
-	Email        string
-	Role         string
-	PasswordHash string
-}
-
-// CreateUser
+// CreateAPIKey
 //
-//	INSERT INTO users (username, email, role, password_hash)
-//	VALUES ($1, $2, $3, $4)
-//	RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRowContext(ctx, createUser,
-		arg.Username,
-		arg.Email,
-		arg.Role,
-		arg.PasswordHash,
+//	INSERT INTO api_keys (ref_code, name, key_prefix, key_hash, scopes, expires_at)
+//	VALUES ($1, $2, $3, $4, $5, $6)
+//	RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
+	row := q.db.QueryRowContext(ctx, createAPIKey,
+		arg.RefCode,
+		arg.Name,
+		arg.KeyPrefix,
+		arg.KeyHash,
+		pq.Array(arg.Scopes),
+		arg.ExpiresAt,
 	)
-	var i CreateUserRow
+	var i ApiKey
 	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.Email,
-		&i.Role,
-		&i.PasswordHash,
+		&i.RefCode,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.KeyHash,
+		pq.Array(&i.Scopes),
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
 	)
 	return i, err
 }
 
-const createUserIfMissing = `-- name: CreateUserIfMissing :exec
-INSERT INTO users (username, role, password_hash)
-VALUES ($1, $2, $3)
-ON CONFLICT (username) DO NOTHING
+const createAdministratorIfMissing = `-- name: CreateAdministratorIfMissing :exec
+INSERT INTO users (ref_code, username, password_hash)
+VALUES ('USR-00000001', $1, $2)
+ON CONFLICT (ref_code) DO NOTHING
 `
 
-type CreateUserIfMissingParams struct {
+type CreateAdministratorIfMissingParams struct {
 	Username     string
-	Role         string
 	PasswordHash string
 }
 
-// CreateUserIfMissing
+// CreateAdministratorIfMissing
 //
-//	INSERT INTO users (username, role, password_hash)
-//	VALUES ($1, $2, $3)
-//	ON CONFLICT (username) DO NOTHING
-func (q *Queries) CreateUserIfMissing(ctx context.Context, arg CreateUserIfMissingParams) error {
-	_, err := q.db.ExecContext(ctx, createUserIfMissing, arg.Username, arg.Role, arg.PasswordHash)
+//	INSERT INTO users (ref_code, username, password_hash)
+//	VALUES ('USR-00000001', $1, $2)
+//	ON CONFLICT (ref_code) DO NOTHING
+func (q *Queries) CreateAdministratorIfMissing(ctx context.Context, arg CreateAdministratorIfMissingParams) error {
+	_, err := q.db.ExecContext(ctx, createAdministratorIfMissing, arg.Username, arg.PasswordHash)
 	return err
 }
 
-const findUserByID = `-- name: FindUserByID :one
-SELECT id, username, COALESCE(email, '') AS email, role, password_hash
-FROM users
-WHERE id = $1
+const findAPIKeyByRefCode = `-- name: FindAPIKeyByRefCode :one
+SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+WHERE ref_code = $1
 `
 
-type FindUserByIDRow struct {
+// FindAPIKeyByRefCode
+//
+//	SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+//	FROM api_keys
+//	WHERE ref_code = $1
+func (q *Queries) FindAPIKeyByRefCode(ctx context.Context, refCode string) (ApiKey, error) {
+	row := q.db.QueryRowContext(ctx, findAPIKeyByRefCode, refCode)
+	var i ApiKey
+	err := row.Scan(
+		&i.RefCode,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.KeyHash,
+		pq.Array(&i.Scopes),
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const findAdministrator = `-- name: FindAdministrator :one
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
+FROM users
+WHERE ref_code = 'USR-00000001'
+`
+
+type FindAdministratorRow struct {
 	ID           int64
+	RefCode      string
 	Username     string
 	Email        string
-	Role         string
 	PasswordHash string
 }
 
-// FindUserByID
+// FindAdministrator
 //
-//	SELECT id, username, COALESCE(email, '') AS email, role, password_hash
+//	SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
 //	FROM users
-//	WHERE id = $1
-func (q *Queries) FindUserByID(ctx context.Context, id int64) (FindUserByIDRow, error) {
-	row := q.db.QueryRowContext(ctx, findUserByID, id)
-	var i FindUserByIDRow
+//	WHERE ref_code = 'USR-00000001'
+func (q *Queries) FindAdministrator(ctx context.Context) (FindAdministratorRow, error) {
+	row := q.db.QueryRowContext(ctx, findAdministrator)
+	var i FindAdministratorRow
 	err := row.Scan(
 		&i.ID,
+		&i.RefCode,
 		&i.Username,
 		&i.Email,
-		&i.Role,
 		&i.PasswordHash,
 	)
 	return i, err
 }
 
-const findUserByUsername = `-- name: FindUserByUsername :one
+const findAdministratorByRefCode = `-- name: FindAdministratorByRefCode :one
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
+FROM users
+WHERE ref_code = $1
+`
 
-SELECT id, username, COALESCE(email, '') AS email, role, password_hash
+type FindAdministratorByRefCodeRow struct {
+	ID           int64
+	RefCode      string
+	Username     string
+	Email        string
+	PasswordHash string
+}
+
+// FindAdministratorByRefCode
+//
+//	SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
+//	FROM users
+//	WHERE ref_code = $1
+func (q *Queries) FindAdministratorByRefCode(ctx context.Context, refCode string) (FindAdministratorByRefCodeRow, error) {
+	row := q.db.QueryRowContext(ctx, findAdministratorByRefCode, refCode)
+	var i FindAdministratorByRefCodeRow
+	err := row.Scan(
+		&i.ID,
+		&i.RefCode,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const findAdministratorByUsername = `-- name: FindAdministratorByUsername :one
+
+SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
 FROM users
 WHERE username = $1
+  AND ref_code = 'USR-00000001'
 `
 
-type FindUserByUsernameRow struct {
+type FindAdministratorByUsernameRow struct {
 	ID           int64
+	RefCode      string
 	Username     string
 	Email        string
-	Role         string
 	PasswordHash string
 }
 
-// This file defines typed authentication user queries for sqlc generation.
+// This file defines typed administrator and API key queries for sqlc generation.
 //
-//	SELECT id, username, COALESCE(email, '') AS email, role, password_hash
+//	SELECT id, ref_code, username, COALESCE(email, '') AS email, password_hash
 //	FROM users
 //	WHERE username = $1
-func (q *Queries) FindUserByUsername(ctx context.Context, username string) (FindUserByUsernameRow, error) {
-	row := q.db.QueryRowContext(ctx, findUserByUsername, username)
-	var i FindUserByUsernameRow
+//	  AND ref_code = 'USR-00000001'
+func (q *Queries) FindAdministratorByUsername(ctx context.Context, username string) (FindAdministratorByUsernameRow, error) {
+	row := q.db.QueryRowContext(ctx, findAdministratorByUsername, username)
+	var i FindAdministratorByUsernameRow
 	err := row.Scan(
 		&i.ID,
+		&i.RefCode,
 		&i.Username,
 		&i.Email,
-		&i.Role,
 		&i.PasswordHash,
 	)
 	return i, err
 }
 
-const updateUserPassword = `-- name: UpdateUserPassword :one
-UPDATE users
-SET password_hash = $1
-WHERE id = $2
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
+const listAPIKeys = `-- name: ListAPIKeys :many
+SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+ORDER BY created_at DESC, ref_code DESC
 `
 
-type UpdateUserPasswordParams struct {
-	PasswordHash string
-	ID           int64
+// ListAPIKeys
+//
+//	SELECT ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+//	FROM api_keys
+//	ORDER BY created_at DESC, ref_code DESC
+func (q *Queries) ListAPIKeys(ctx context.Context) ([]ApiKey, error) {
+	rows, err := q.db.QueryContext(ctx, listAPIKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApiKey
+	for rows.Next() {
+		var i ApiKey
+		if err := rows.Scan(
+			&i.RefCode,
+			&i.Name,
+			&i.KeyPrefix,
+			&i.KeyHash,
+			pq.Array(&i.Scopes),
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-type UpdateUserPasswordRow struct {
+const revokeAPIKey = `-- name: RevokeAPIKey :one
+UPDATE api_keys
+SET revoked_at = COALESCE(revoked_at, NOW())
+WHERE ref_code = $1
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+`
+
+// RevokeAPIKey
+//
+//	UPDATE api_keys
+//	SET revoked_at = COALESCE(revoked_at, NOW())
+//	WHERE ref_code = $1
+//	RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+func (q *Queries) RevokeAPIKey(ctx context.Context, refCode string) (ApiKey, error) {
+	row := q.db.QueryRowContext(ctx, revokeAPIKey, refCode)
+	var i ApiKey
+	err := row.Scan(
+		&i.RefCode,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.KeyHash,
+		pq.Array(&i.Scopes),
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const updateAdministratorPassword = `-- name: UpdateAdministratorPassword :one
+UPDATE users
+SET password_hash = $1
+WHERE ref_code = 'USR-00000001'
+RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash
+`
+
+type UpdateAdministratorPasswordRow struct {
 	ID           int64
+	RefCode      string
 	Username     string
 	Email        string
-	Role         string
 	PasswordHash string
 }
 
-// UpdateUserPassword
+// UpdateAdministratorPassword
 //
 //	UPDATE users
 //	SET password_hash = $1
-//	WHERE id = $2
-//	RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
-func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (UpdateUserPasswordRow, error) {
-	row := q.db.QueryRowContext(ctx, updateUserPassword, arg.PasswordHash, arg.ID)
-	var i UpdateUserPasswordRow
+//	WHERE ref_code = 'USR-00000001'
+//	RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash
+func (q *Queries) UpdateAdministratorPassword(ctx context.Context, passwordHash string) (UpdateAdministratorPasswordRow, error) {
+	row := q.db.QueryRowContext(ctx, updateAdministratorPassword, passwordHash)
+	var i UpdateAdministratorPasswordRow
 	err := row.Scan(
 		&i.ID,
+		&i.RefCode,
 		&i.Username,
 		&i.Email,
-		&i.Role,
 		&i.PasswordHash,
 	)
 	return i, err
 }
 
-const updateUserProfile = `-- name: UpdateUserProfile :one
+const updateAdministratorProfile = `-- name: UpdateAdministratorProfile :one
 UPDATE users
 SET username = $1,
     email = $2
-WHERE id = $3
-RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
+WHERE ref_code = 'USR-00000001'
+RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash
 `
 
-type UpdateUserProfileParams struct {
+type UpdateAdministratorProfileParams struct {
 	Username string
 	Email    sql.NullString
-	ID       int64
 }
 
-type UpdateUserProfileRow struct {
+type UpdateAdministratorProfileRow struct {
 	ID           int64
+	RefCode      string
 	Username     string
 	Email        string
-	Role         string
 	PasswordHash string
 }
 
-// UpdateUserProfile
+// UpdateAdministratorProfile
 //
 //	UPDATE users
 //	SET username = $1,
 //	    email = $2
-//	WHERE id = $3
-//	RETURNING id, username, COALESCE(email, '') AS email, role, password_hash
-func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (UpdateUserProfileRow, error) {
-	row := q.db.QueryRowContext(ctx, updateUserProfile, arg.Username, arg.Email, arg.ID)
-	var i UpdateUserProfileRow
+//	WHERE ref_code = 'USR-00000001'
+//	RETURNING id, ref_code, username, COALESCE(email, '') AS email, password_hash
+func (q *Queries) UpdateAdministratorProfile(ctx context.Context, arg UpdateAdministratorProfileParams) (UpdateAdministratorProfileRow, error) {
+	row := q.db.QueryRowContext(ctx, updateAdministratorProfile, arg.Username, arg.Email)
+	var i UpdateAdministratorProfileRow
 	err := row.Scan(
 		&i.ID,
+		&i.RefCode,
 		&i.Username,
 		&i.Email,
-		&i.Role,
 		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const useAPIKey = `-- name: UseAPIKey :one
+UPDATE api_keys
+SET last_used_at = GREATEST(COALESCE(last_used_at, '-infinity'::timestamptz), clock_timestamp())
+WHERE key_hash = $1
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > NOW())
+RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+`
+
+// UseAPIKey
+//
+//	UPDATE api_keys
+//	SET last_used_at = GREATEST(COALESCE(last_used_at, '-infinity'::timestamptz), clock_timestamp())
+//	WHERE key_hash = $1
+//	  AND revoked_at IS NULL
+//	  AND (expires_at IS NULL OR expires_at > NOW())
+//	RETURNING ref_code, name, key_prefix, key_hash, scopes, created_at, last_used_at, expires_at, revoked_at
+func (q *Queries) UseAPIKey(ctx context.Context, keyHash string) (ApiKey, error) {
+	row := q.db.QueryRowContext(ctx, useAPIKey, keyHash)
+	var i ApiKey
+	err := row.Scan(
+		&i.RefCode,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.KeyHash,
+		pq.Array(&i.Scopes),
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
 	)
 	return i, err
 }

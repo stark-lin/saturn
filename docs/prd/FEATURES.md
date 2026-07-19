@@ -229,13 +229,13 @@ Platform
 │   ├── Exact ObjectRef Metadata Lookup
 │   ├── Filtered ObjectRef Metadata Search
 │   ├── Recent Object Metadata
-│   └── Owner Scope Filtering
+│   └── Shared Instance Filtering
 │
 ├── ObjectRef
 │   ├── Readable Ref Code
 │   ├── Object Registration
 │   ├── Ref Resolution
-│   ├── Owner-only Metadata Lookup
+│   ├── Shared Instance Metadata Lookup
 │   ├── Cross-module Reference
 │   └── LLM Reference
 │
@@ -305,11 +305,11 @@ Basic boundaries:
 
 ```text
 Internal data relationships still use database ids
-ref_code is mainly used for display, owner-only metadata query, search, LLM, and manual references
+ref_code is mainly used for display, shared instance metadata query, search, LLM, and manual references
 object_refs authoritatively maintains ref_code and title/tags/status metadata projections
 Exact ref_code and recent object metadata responses both return title, tags, status; tags is an empty array when there are no tags
 ref_code uses NTE / FIL / ACC / CAL / LLM module prefixes; object types are additionally expressed by object_type
-The first version Search metadata query only allows resource owners access
+The first version Search metadata query reads the shared Saturn instance after credential-scope authorization
 Prioritize allocating to first-class business objects like Note, File, EventAggregate, Event, Account, Transaction, Collection
 Does not require relationship tables, configuration items, sessions, or search index rows to have ref codes
 Do not treat ref code as the sole source of business logic

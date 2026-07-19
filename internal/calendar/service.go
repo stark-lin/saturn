@@ -57,6 +57,9 @@ func NewService(
 }
 
 func (s *Service) ListEventAggregates(ctx context.Context, actor auth.Principal, query EventAggregateQuery) (EventAggregatePage, error) {
+	if err := s.can(actor, auth.ActionRead, "event_aggregate", 0, 0); err != nil {
+		return EventAggregatePage{}, err
+	}
 	return s.repo.ListEventAggregates(ctx, auth.ScopeForPrincipal(actor), query)
 }
 
@@ -65,6 +68,9 @@ func (s *Service) CreateEventAggregate(ctx context.Context, actor auth.Principal
 }
 
 func (s *Service) ImportEventAggregate(ctx context.Context, actor auth.Principal, input ImportEventAggregateInput) (EventAggregateDetail, error) {
+	if err := s.can(actor, auth.ActionCreate, "event_aggregate", 0, 0); err != nil {
+		return EventAggregateDetail{}, err
+	}
 	parsed, err := parseICSImport(input)
 	if err != nil {
 		return EventAggregateDetail{}, wrapInvalidICSImport(err)
@@ -84,6 +90,9 @@ func (s *Service) createEventAggregateWithEvents(
 	input CreateEventAggregateInput,
 	eventInputs []CreateEventInput,
 ) (EventAggregateDetail, error) {
+	if err := s.can(actor, auth.ActionCreate, "event_aggregate", 0, 0); err != nil {
+		return EventAggregateDetail{}, err
+	}
 	input, err := normalizeCreateEventAggregateInput(input)
 	if err != nil {
 		return EventAggregateDetail{}, err
@@ -134,7 +143,7 @@ func (s *Service) createEventAggregateWithEvents(
 		created.Events = make([]Event, 0, len(normalizedEvents))
 
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: aggregate.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -157,7 +166,7 @@ func (s *Service) createEventAggregateWithEvents(
 			event.Status = EventStatusScheduled
 			event.Tags = eventInput.Tags
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 				TargetRefCode: event.RefCode, Result: audit.ResultSuccess,
 			}); err != nil {
 				return err
@@ -173,6 +182,9 @@ func (s *Service) createEventAggregateWithEvents(
 }
 
 func (s *Service) CreateEvent(ctx context.Context, actor auth.Principal, aggregateRefCode string, input CreateEventInput) (EventAggregateDetail, error) {
+	if err := s.can(actor, auth.ActionCreate, "event", 0, 0); err != nil {
+		return EventAggregateDetail{}, err
+	}
 	aggregateRefCode = ref.NormalizeCode(aggregateRefCode)
 	if !ref.ValidCode(aggregateRefCode) || !ref.CodeMatchesObjectType(aggregateRefCode, ref.ObjectTypeEventAggregate) {
 		return EventAggregateDetail{}, ErrInvalidEvent
@@ -225,7 +237,7 @@ func (s *Service) CreateEvent(ctx context.Context, actor auth.Principal, aggrega
 			event.Status = EventStatusScheduled
 			event.Tags = eventInput.Tags
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 				TargetRefCode: event.RefCode, Result: audit.ResultSuccess,
 			}); err != nil {
 				return err
@@ -241,6 +253,9 @@ func (s *Service) CreateEvent(ctx context.Context, actor auth.Principal, aggrega
 }
 
 func (s *Service) GetEventAggregate(ctx context.Context, actor auth.Principal, refCode string) (EventAggregateDetail, error) {
+	if err := s.can(actor, auth.ActionRead, "event_aggregate", 0, 0); err != nil {
+		return EventAggregateDetail{}, err
+	}
 	aggregate, err := s.repo.FindEventAggregateByRefCode(ctx, auth.ScopeForPrincipal(actor), refCode)
 	if err != nil {
 		return EventAggregateDetail{}, err
@@ -253,6 +268,9 @@ func (s *Service) GetEventAggregate(ctx context.Context, actor auth.Principal, r
 }
 
 func (s *Service) DeleteEventAggregate(ctx context.Context, actor auth.Principal, refCode string) error {
+	if err := s.can(actor, auth.ActionDelete, "event_aggregate", 0, 0); err != nil {
+		return err
+	}
 	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		aggregate, err := s.repo.LockEventAggregateByRefCode(txCtx, refCode)
 		if err != nil {
@@ -267,14 +285,14 @@ func (s *Service) DeleteEventAggregate(ctx context.Context, actor auth.Principal
 		}
 		for _, event := range events {
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 				TargetRefCode: event.RefCode, Result: audit.ResultSuccess, Reason: "cascade_event_aggregate",
 			}); err != nil {
 				return err
 			}
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 			TargetRefCode: aggregate.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -296,6 +314,9 @@ func (s *Service) DeleteEventAggregate(ctx context.Context, actor auth.Principal
 }
 
 func (s *Service) CalendarView(ctx context.Context, actor auth.Principal, query CalendarViewQuery) (CalendarView, error) {
+	if err := s.can(actor, auth.ActionRead, "event", 0, 0); err != nil {
+		return CalendarView{}, err
+	}
 	page, err := s.repo.ListViewEvents(ctx, auth.ScopeForPrincipal(actor), query)
 	if err != nil {
 		return CalendarView{}, err
@@ -307,10 +328,16 @@ func (s *Service) CalendarView(ctx context.Context, actor auth.Principal, query 
 }
 
 func (s *Service) GetEvent(ctx context.Context, actor auth.Principal, refCode string) (Event, error) {
+	if err := s.can(actor, auth.ActionRead, "event", 0, 0); err != nil {
+		return Event{}, err
+	}
 	return s.repo.FindEventByRefCode(ctx, auth.ScopeForPrincipal(actor), refCode)
 }
 
 func (s *Service) FinishEvent(ctx context.Context, actor auth.Principal, refCode string) (Event, error) {
+	if err := s.can(actor, auth.ActionUpdate, "event", 0, 0); err != nil {
+		return Event{}, err
+	}
 	var finished Event
 	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		event, err := s.repo.LockEventByRefCode(txCtx, refCode)
@@ -337,7 +364,7 @@ func (s *Service) FinishEvent(ctx context.Context, actor auth.Principal, refCode
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionUpdate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionUpdate,
 			TargetRefCode: event.RefCode, Result: audit.ResultSuccess, Reason: "finish",
 		}); err != nil {
 			return err
@@ -352,6 +379,9 @@ func (s *Service) FinishEvent(ctx context.Context, actor auth.Principal, refCode
 }
 
 func (s *Service) VoidEvent(ctx context.Context, actor auth.Principal, refCode string) (Event, error) {
+	if err := s.can(actor, auth.ActionUpdate, "event", 0, 0); err != nil {
+		return Event{}, err
+	}
 	var voided Event
 	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
 		event, err := s.repo.LockEventByRefCode(txCtx, refCode)
@@ -375,7 +405,7 @@ func (s *Service) VoidEvent(ctx context.Context, actor auth.Principal, refCode s
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionUpdate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionUpdate,
 			TargetRefCode: event.RefCode, Result: audit.ResultSuccess, Reason: "void",
 		}); err != nil {
 			return err
@@ -398,7 +428,7 @@ func (s *Service) recordWriteFailure(ctx context.Context, actor auth.Principal, 
 		reason = "not_found"
 	}
 	auditErr := s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: action,
+		ActorRefCode: actor.ActorRefCode(), Action: action,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 	if auditErr != nil {

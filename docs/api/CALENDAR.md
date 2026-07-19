@@ -143,7 +143,7 @@ week: Generates recurrence.count Events on the same weekday and clock time as st
 month: Generates recurrence.count Events on the same calendar day and clock time in successive months. If the template day does not exist in a target month, that instance uses the target month's last day; each occurrence is calculated from the original template, so January 31 produces January 31, February 28/29, and March 31.
 year: Generates recurrence.count Events on the same calendar date and clock time in successive years. February 29 uses February 28 in non-leap years and returns to February 29 in later leap years.
 Each repeating instance copies the submitted end clock and calendar-day offset onto its own start date. For example, a same-day 09:00-10:00 template produces 09:00-10:00 on every generated date; an overnight 23:00-01:00 template ends at 01:00 on the following date for every instance.
-Duplicate events are allowed; there is no uniqueness constraint on the same owner, same start time, and same title.
+Duplicate events are allowed; there is no uniqueness constraint on the same aggregate, start time, and title.
 ```
 
 ### 5.2 ICS Aggregate Import
@@ -329,13 +329,12 @@ If a write operation fails or is rejected within the transaction, no SUCCESS aud
 
 ## 8. Permissions and Errors
 
-All endpoints require a Bearer JWT. Resource authorization is executed in the Calendar service, and the repo only applies fixed scope queries:
+All endpoints require an administrator JWT or API key. Reads require `data:read`; mutations require `data:write`. The repository applies the shared instance scope:
 
 ```text
-user:      Can only list, read, and write EventAggregates / Events they own.
-superuser: Can list, read, create Events for, finish, void, or delete existing EventAggregates / Events of any owner;
-           When creating or importing an EventAggregate, the new aggregate always belongs to the creating actor;
-           When creating an Event under an existing aggregate, the new Event belongs to the owner of that aggregate.
+administrator: all Calendar operations
+API key: operations allowed by data:read/data:write
+new Events retain the singleton relational anchor of their aggregate
 ```
 
 Inaccessible resources and non-existent resources both manifest externally as:

@@ -52,14 +52,9 @@ func (s *Service) RecordStandalone(ctx context.Context, event Event) error {
 }
 
 // RecordAuthentication implements the auth package's minimal audit dependency.
-func (s *Service) RecordAuthentication(ctx context.Context, actorUserID int64, action string, result string, reason string) error {
-	actorType := ActorTypeAnonymous
-	if actorUserID > 0 {
-		actorType = ActorTypeUser
-	}
+func (s *Service) RecordAuthentication(ctx context.Context, actorRefCode string, action string, result string, reason string) error {
 	return s.RecordStandalone(ctx, Event{
-		ActorType:     actorType,
-		ActorUserID:   actorUserID,
+		ActorRefCode:  actorRefCode,
 		Action:        Action(action),
 		TargetRefCode: SystemTargetRefCode,
 		Result:        Result(result),
@@ -67,11 +62,23 @@ func (s *Service) RecordAuthentication(ctx context.Context, actorUserID int64, a
 	})
 }
 
+func (s *Service) RecordActorAction(ctx context.Context, actorRefCode string, action string, targetRefCode string, result string, reason string) error {
+	event := Event{
+		ActorRefCode: actorRefCode, Action: Action(action), TargetRefCode: targetRefCode,
+		Result: Result(result), Reason: reason,
+	}
+	if _, ok := platformdb.TransactionExecutorFromContext(ctx); ok {
+		_, err := s.Record(ctx, event)
+		return err
+	}
+	return s.RecordStandalone(ctx, event)
+}
+
 func (s *Service) List(ctx context.Context, actor auth.Principal, query Query) ([]Event, error) {
 	if actor.IsZero() {
 		return nil, auth.ErrUnauthenticated
 	}
-	if !actor.IsSuperuser() {
+	if !actor.IsAdministrator() {
 		return nil, auth.ErrForbidden
 	}
 	if s == nil || s.repo == nil {
@@ -81,8 +88,10 @@ func (s *Service) List(ctx context.Context, actor auth.Principal, query Query) (
 		query.Limit = DefaultLimit
 	}
 	query.TargetRefCode = ref.NormalizeCode(query.TargetRefCode)
+	query.ActorRefCode = strings.ToUpper(strings.TrimSpace(query.ActorRefCode))
 	if query.Limit < 1 || query.Limit > MaxLimit || query.Offset < 0 ||
-		(query.TargetRefCode != "" && !ref.ValidCode(query.TargetRefCode)) ||
+		(query.TargetRefCode != "" && !validTargetRefCode(query.TargetRefCode)) ||
+		(query.ActorRefCode != "" && !validActorRefCode(query.ActorRefCode)) ||
 		(query.Action != "" && !validQueryAction(query.Action)) ||
 		(query.Result != "" && !validQueryResult(query.Result)) {
 		return nil, ErrInvalidEvent
@@ -93,6 +102,7 @@ func (s *Service) List(ctx context.Context, actor auth.Principal, query Query) (
 func enrichEvent(ctx context.Context, event Event) Event {
 	source := httpx.RequestSourceFromContext(ctx)
 	event.TargetRefCode = ref.NormalizeCode(event.TargetRefCode)
+	event.ActorRefCode = strings.ToUpper(strings.TrimSpace(event.ActorRefCode))
 	event.Reason = strings.TrimSpace(event.Reason)
 	if event.SourceIP == "" {
 		event.SourceIP = source.IP
@@ -107,24 +117,11 @@ func enrichEvent(ctx context.Context, event Event) Event {
 }
 
 func validateEvent(event Event) error {
-	switch event.ActorType {
-	case ActorTypeUser:
-		if event.ActorUserID < 1 {
-			return ErrInvalidEvent
-		}
-	case ActorTypeSystem, ActorTypeLLM, ActorTypeAnonymous:
-		if event.ActorUserID != 0 {
-			return ErrInvalidEvent
-		}
-	default:
+	if !validActorRefCode(event.ActorRefCode) {
 		return ErrInvalidEvent
 	}
 	switch event.Action {
-	case ActionCreate, ActionUpdate, ActionDelete, ActionExport, ActionLogin, ActionLogout:
-	case ActionRead:
-		if event.ActorType != ActorTypeLLM {
-			return ErrInvalidEvent
-		}
+	case ActionCreate, ActionRead, ActionUpdate, ActionDelete, ActionExport, ActionLogin, ActionLogout:
 	default:
 		return ErrInvalidEvent
 	}
@@ -133,7 +130,7 @@ func validateEvent(event Event) error {
 	default:
 		return ErrInvalidEvent
 	}
-	if event.TargetRefCode == "" || (!ref.ValidCode(event.TargetRefCode) && event.TargetRefCode != SystemTargetRefCode) {
+	if !validTargetRefCode(event.TargetRefCode) {
 		return ErrInvalidEvent
 	}
 	if (event.Action == ActionLogin || event.Action == ActionLogout) && event.TargetRefCode != SystemTargetRefCode {
@@ -143,4 +140,19 @@ func validateEvent(event Event) error {
 		return ErrInvalidEvent
 	}
 	return nil
+}
+
+func validActorRefCode(value string) bool {
+	return value == auth.AdministratorRefCode || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value)
+}
+
+func validTargetRefCode(value string) bool {
+	if value == auth.AdministratorRefCode || value == SystemTargetRefCode || auth.ValidAPIKeyRefCode(value) {
+		return true
+	}
+	return ref.CodeMatchesModule(value, ref.ModuleAccounting) ||
+		ref.CodeMatchesModule(value, ref.ModuleCalendar) ||
+		ref.CodeMatchesModule(value, ref.ModuleFiles) ||
+		ref.CodeMatchesModule(value, ref.ModuleLLM) ||
+		ref.CodeMatchesModule(value, ref.ModuleNotes)
 }

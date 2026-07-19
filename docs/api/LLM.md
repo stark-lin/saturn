@@ -27,6 +27,8 @@ Common rules: ../API.md
 | `POST` | `/api/llm/sessions/{ref_code}/requests` | Authenticated | `Implemented` | Create an immutable request, write a PostgreSQL queued request, and return the queued request |
 | `GET` | `/api/llm/requests/{ref_code}` | Authenticated | `Implemented` | Query current status and result of a request by request ref |
 
+Read endpoints require `data:read`; session/request creation and session deletion require `data:write`. Administrator JWTs satisfy both. `llm_requests.actor_ref_code` stores the administrator or Saturn API-key RefCode that submitted the request.
+
 ---
 
 ## 4. Data and Status
@@ -326,7 +328,7 @@ Terminal requests (success/error) can also only be deleted recursively through t
 
 ```text
 The handler only performs authentication, parameter binding, and response writing
-The service executes session permissions, reference permissions, auditing, and provider call orchestration
+The service executes action-scope checks, reference access, auditing, and provider call orchestration
 The repo only executes fixed SQL
 As an upper-layer module, LLM can depend on business module services / facades
 LLM does not directly access other business module repos or business tables
@@ -337,10 +339,10 @@ Reference resolution flow:
 ```text
 1. The backend parses the ObjectRef by ref_code to identify the module/object_type.
 2. The backend calls the read method of the corresponding business module service and passes in the original actor.
-3. The business module service executes its existing resource-level permission rules.
+3. The business module service reads from shared instance scope using the original principal.
 4. LLM saves a snapshot of the reference to llm_request_references.
 5. LLM stitches the authorized payload into context_json.
-6. LLM writes an audit READ for each successfully read reference, with actor_type = LLM.
+6. LLM writes an audit READ for each successfully read reference, using the original principal's `USR-00000001` or `KEY-*` actor RefCode.
 ```
 
 If a single resource does not exist or access is denied, it returns:
@@ -350,7 +352,7 @@ HTTP 404
 code = not_found
 ```
 
-The LLM provider API key is a secret, is not returned to the client, and is not written to request/response JSON, audits, logs, or normal API responses.
+The external LLM provider API key in runtime configuration is distinct from Saturn access API keys. It is not returned to clients or written to request/response JSON, audits, logs, or normal API responses.
 
 ---
 

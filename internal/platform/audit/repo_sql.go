@@ -27,8 +27,7 @@ func (r *SQLRepository) Insert(ctx context.Context, event Event) (Event, error) 
 		return Event{}, fmt.Errorf("audit inserts require a SQL transaction")
 	}
 	row, err := auditsqlc.New(executor).InsertAuditLog(ctx, auditsqlc.InsertAuditLogParams{
-		ActorType:     string(event.ActorType),
-		ActorUserID:   nullableID(event.ActorUserID),
+		ActorRefCode:  event.ActorRefCode,
 		Action:        string(event.Action),
 		TargetRefCode: event.TargetRefCode,
 		Result:        string(event.Result),
@@ -48,7 +47,7 @@ func (r *SQLRepository) List(ctx context.Context, query Query) ([]Event, error) 
 	}
 	rows, err := auditsqlc.New(platformdb.ExecutorFromContext(ctx, r.database)).ListAuditLogs(ctx, auditsqlc.ListAuditLogsParams{
 		TargetRefCode: query.TargetRefCode,
-		ActorUserID:   query.ActorUserID,
+		ActorRefCode:  query.ActorRefCode,
 		Action:        string(query.Action),
 		Result:        string(query.Result),
 		PageLimit:     int32(query.Limit),
@@ -67,8 +66,7 @@ func (r *SQLRepository) List(ctx context.Context, query Query) ([]Event, error) 
 func eventFromInsertRow(row auditsqlc.InsertAuditLogRow) Event {
 	return Event{
 		ID:            row.ID,
-		ActorType:     ActorType(row.ActorType),
-		ActorUserID:   row.ActorUserID.Int64,
+		ActorRefCode:  row.ActorRefCode,
 		Action:        Action(row.Action),
 		TargetRefCode: row.TargetRefCode,
 		Result:        Result(row.Result),
@@ -82,8 +80,7 @@ func eventFromInsertRow(row auditsqlc.InsertAuditLogRow) Event {
 func eventFromListRow(row auditsqlc.ListAuditLogsRow) Event {
 	return Event{
 		ID:            row.ID,
-		ActorType:     ActorType(row.ActorType),
-		ActorUserID:   row.ActorUserID.Int64,
+		ActorRefCode:  row.ActorRefCode,
 		Action:        Action(row.Action),
 		TargetRefCode: row.TargetRefCode,
 		Result:        Result(row.Result),
@@ -92,10 +89,6 @@ func eventFromListRow(row auditsqlc.ListAuditLogsRow) Event {
 		UserAgent:     row.UserAgent.String,
 		CreatedAt:     row.CreatedAt,
 	}
-}
-
-func nullableID(id int64) sql.NullInt64 {
-	return sql.NullInt64{Int64: id, Valid: id > 0}
 }
 
 func nullableText(text string) sql.NullString {

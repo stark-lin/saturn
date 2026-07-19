@@ -1,4 +1,4 @@
-// This file renders superuser-only operations views including audit logs and account controls.
+// This file renders administrator operations for audit logs, API keys, and account controls.
 import { getJSON, logout as logoutSession, patchJSON, postJSON } from "../../shared/api/client.js";
 import {
   renderButton,
@@ -62,8 +62,10 @@ function setFormBusy(form, busy) {
   });
 }
 
-function actorLabel(log) {
-  return log.actor_user_id ? `${log.actor_type} ${log.actor_user_id}` : log.actor_type;
+function actorLabel(log, apiKeyNames) {
+  const refCode = log.actor_ref_code ?? "unknown";
+  const name = apiKeyNames.get(refCode);
+  return name ? `${name} · ${refCode}` : refCode;
 }
 
 function renderDetailList(items) {
@@ -107,7 +109,7 @@ function renderChoice({ code, meta, title, description, onOpen }) {
   return choice;
 }
 
-function auditLogTable(logs) {
+function auditLogTable(logs, apiKeyNames) {
   return renderDataTable({
     caption: "Append-only audit logs",
     columns: [
@@ -121,7 +123,7 @@ function auditLogTable(logs) {
     ],
     rows: logs.map((log) => ({
       time: log.created_at,
-      actor: actorLabel(log),
+      actor: actorLabel(log, apiKeyNames),
       action: log.action,
       target: log.target_ref_code,
       result: renderTag(log.result),
@@ -193,10 +195,15 @@ function renderAuditPage(target) {
     const query = new URLSearchParams(new FormData(form));
     query.set("limit", "50");
     try {
-      const result = await getJSON(`/api/platform/audit-logs?${query}`);
+      const [result, keyResult] = await Promise.all([
+        getJSON(`/api/platform/audit-logs?${query}`),
+        getJSON("/api/auth/api-keys").catch(() => ({ api_keys: [] })),
+      ]);
       const logs = Array.isArray(result.audit_logs) ? result.audit_logs : [];
+      const keys = Array.isArray(keyResult.api_keys) ? keyResult.api_keys : [];
+      const apiKeyNames = new Map(keys.map((key) => [key.refcode, key.name]));
       output.replaceChildren(logs.length > 0
-        ? auditLogTable(logs)
+        ? auditLogTable(logs, apiKeyNames)
         : renderNotice({ title: "No audit logs", message: "No records match the current filters.", tone: "info" }));
     } catch (error) {
       output.replaceChildren(renderNotice({ title: "Audit logs unavailable", message: error.message }));
@@ -225,104 +232,272 @@ function renderAccountOverview(context) {
     title: "Account Detail",
     note: "Current authenticated principal and available account operations.",
     children: [renderDetailList([
-      { label: "User ID", value: user.id ?? "unknown" },
+      { label: "RefCode", value: user.refcode ?? "unknown" },
       { label: "Username", value: user.username ?? "unknown" },
       { label: "Email", value: user.email || "empty" },
-      { label: "Role", value: user.role ?? "unknown" },
-      { label: "Create Account", value: "superuser creates ordinary user accounts" },
+      { label: "Principal", value: user.kind ?? "administrator" },
       { label: "Password", value: "current user password change requires the current password" },
       { label: "Logout", value: "revokes the current JWT session" },
     ])],
   });
 }
 
-function renderCreateUserPanel() {
+function renderAPIKeyCell(primary, secondary) {
+  const cell = el("div", "api-key-cell");
+  cell.append(el("strong", "api-key-cell__primary", primary));
+  if (secondary) {
+    cell.append(el("span", "api-key-cell__secondary", secondary));
+  }
+  return cell;
+}
+
+function renderAPIKeySecretDialog(result, onClose) {
+  const dialog = el("dialog", "api-key-dialog");
+  dialog.setAttribute("aria-labelledby", "api-key-secret-title");
+
+  const content = el("div", "api-key-dialog__content");
+  const header = el("header", "api-key-dialog__head");
+  const heading = el("div");
+  heading.append(
+    el("span", "api-key-dialog__eyebrow", "One-time secret"),
+    el("h2", "api-key-dialog__title", "Save this API key now"),
+  );
+  heading.lastElementChild.id = "api-key-secret-title";
+  header.append(heading, renderTag(result.name));
+
+  const message = el(
+    "p",
+    "api-key-dialog__message",
+    "This is the only time the complete key will be shown. Closing this window permanently removes it from the page.",
+  );
+
+  const secretField = el("label", "control-field");
+  secretField.append(el("span", "control-label", "API key"));
+  const secretRow = el("span", "api-key-dialog__secret-row");
+  const secretInput = el("input", "field api-key-dialog__secret");
+  secretInput.type = "text";
+  secretInput.readOnly = true;
+  secretInput.value = result.api_key;
+  secretInput.spellcheck = false;
+  secretInput.autocomplete = "off";
+  secretInput.setAttribute("aria-label", "New API key secret");
+  secretInput.addEventListener("focus", () => secretInput.select());
+
+  const copy = renderButton("COPY", { label: "Copy the new API key" });
+  const feedback = el("p", "api-key-dialog__feedback", "Store it in your password manager or client configuration.");
+  feedback.setAttribute("aria-live", "polite");
+  copy.addEventListener("click", async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(secretInput.value);
+      } else {
+        secretInput.focus();
+        secretInput.select();
+        if (!document.execCommand("copy")) {
+          throw new Error("Copy is unavailable");
+        }
+      }
+      copy.textContent = "COPIED";
+      feedback.textContent = "Copied. Keep it somewhere secure before closing this window.";
+    } catch (_error) {
+      secretInput.focus();
+      secretInput.select();
+      feedback.textContent = "Automatic copy is unavailable. The key is selected for manual copy.";
+    }
+  });
+  secretRow.append(secretInput, copy);
+  secretField.append(secretRow);
+
+  const actions = el("footer", "api-key-dialog__actions");
+  const close = renderButton("I SAVED IT", { variant: "primary", label: "Close the one-time API key window" });
+  close.addEventListener("click", () => dialog.close());
+  actions.append(close);
+  content.append(header, message, secretField, feedback, actions);
+  dialog.append(content);
+
+  dialog.addEventListener("close", () => {
+    secretInput.value = "";
+    dialog.replaceChildren();
+    dialog.remove();
+    onClose?.();
+  }, { once: true });
+  return dialog;
+}
+
+function renderAPIKeyStatusTable(keys, onRevoke) {
+  return renderDataTable({
+    caption: "Existing API keys",
+    columns: [
+      { key: "credential", label: "Credential" },
+      { key: "access", label: "Access" },
+      { key: "status", label: "Status" },
+      { key: "activity", label: "Activity" },
+      { key: "action", label: "Action" },
+    ],
+    rows: keys.map((key) => ({
+      credential: renderAPIKeyCell(key.name, `${key.refcode} · ${key.key_prefix}`),
+      access: renderAPIKeyCell((key.scopes ?? []).join(", ") || "none"),
+      status: renderTag(key.status),
+      activity: renderAPIKeyCell(
+        `Last used: ${key.last_used_at ?? "never"}`,
+        `Expires: ${key.expires_at ?? "never"}`,
+      ),
+      action: key.status === "ACTIVE"
+        ? renderButton("REVOKE", { label: `Revoke ${key.name}`, onClick: () => onRevoke(key) })
+        : "—",
+    })),
+  });
+}
+
+function renderAPIKeysPage(target) {
   const form = el("form", "settings-form");
   const output = el("div", "settings-feedback");
   output.setAttribute("aria-live", "polite");
 
-  const fields = el("div", "control-stack");
+  const createRegion = el("section", "api-key-region api-key-create");
+  const createHeader = el("header", "api-key-region__head");
+  const createHeading = el("h3", "api-key-region__title", "Create a key");
+  createHeading.id = "create-api-key-title";
+  createHeader.append(
+    createHeading,
+    el("p", "api-key-region__note", "Choose the smallest access scope your client needs."),
+  );
+  createRegion.setAttribute("aria-labelledby", createHeading.id);
+
+  const listRegion = el("section", "api-key-region api-key-list");
+  const listHeader = el("header", "api-key-region__head");
+  const listHeading = el("h3", "api-key-region__title", "Existing keys");
+  listHeading.id = "existing-api-keys-title";
+  const listCount = el("span", "api-key-count", "—");
+  listHeader.append(listHeading, listCount);
+  listRegion.setAttribute("aria-labelledby", listHeading.id);
+
+  const listOutput = el("div", "settings-feedback");
+  listOutput.setAttribute("aria-live", "polite");
+
+  const fields = el("div", "api-key-form-grid");
   fields.append(
     renderTextField({
-      label: "Username",
-      name: "username",
-      placeholder: "alice",
-      autocomplete: "username",
+      label: "Name",
+      name: "name",
+      placeholder: "saturn-mcp",
       required: true,
     }),
     renderTextField({
-      label: "Email",
-      name: "email",
-      type: "email",
-      placeholder: "alice@example.com",
-      autocomplete: "email",
-    }),
-    renderTextField({
-      label: "Password",
-      name: "password",
-      type: "password",
-      autocomplete: "new-password",
-      required: true,
+      label: "Expires at (optional, RFC3339)",
+      name: "expires_at",
+      placeholder: "2027-07-19T10:00:00Z",
     }),
   );
 
+  const scopeField = el("fieldset", "api-key-scopes");
+  scopeField.append(el("legend", "control-label", "Scopes"));
+  [
+    ["data:read", "Read instance data"],
+    ["data:write", "Create and modify instance data"],
+  ].forEach(([value, label]) => {
+    const option = el("label", "api-key-scope-option");
+    const checkbox = el("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "scopes";
+    checkbox.value = value;
+    checkbox.checked = value === "data:read";
+    option.append(checkbox, document.createTextNode(label));
+    scopeField.append(option);
+  });
+  fields.append(scopeField);
+
   const actions = el("footer", "settings-form__actions");
-  const save = renderButton("SAVE", { type: "submit", variant: "primary", label: "Create account" });
+  const save = renderButton("CREATE", { type: "submit", variant: "primary", label: "Create API key" });
   actions.append(save);
-  form.append(fields, actions, output);
+  form.append(fields, actions);
+  createRegion.append(createHeader, form, output);
+  listRegion.append(listHeader, listOutput);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const username = form.elements.username.value.trim();
-    const email = form.elements.email.value.trim();
-    const password = form.elements.password.value;
-    if (!username || !password.trim()) {
+    const name = form.elements.name.value.trim();
+    const expiresAt = form.elements.expires_at.value.trim();
+    const scopes = Array.from(form.querySelectorAll('input[name="scopes"]:checked')).map((input) => input.value);
+    if (!name || scopes.length === 0) {
       output.replaceChildren(renderNotice({
-        title: "Invalid Account",
-        message: "Username and password are required.",
+        title: "Invalid API Key",
+        message: "A name and at least one scope are required.",
       }));
       return;
     }
 
     setFormBusy(form, true);
     output.replaceChildren(renderNotice({
-      title: "Creating Account",
-      message: "Writing a new ordinary user account.",
+      title: "Creating API Key",
+      message: "Generating a new secret on the server.",
       tone: "info",
     }));
     try {
-      const result = await postJSON("/api/auth/users", {
-        username,
-        email,
-        password,
-        role: "user",
+      const result = await postJSON("/api/auth/api-keys", {
+        name,
+        scopes,
+        expires_at: expiresAt || null,
       });
       form.reset();
-      output.replaceChildren(
-        renderNotice({
-          title: "Account Created",
-          message: `${result.user.username} can now sign in with the initial password.`,
+      form.querySelector('input[name="scopes"][value="data:read"]').checked = true;
+      output.replaceChildren(renderNotice({
+        title: "API Key Created",
+        message: "Copy the secret from the one-time window before closing it.",
+        tone: "info",
+      }));
+      const secretDialog = renderAPIKeySecretDialog(result, () => {
+        output.replaceChildren(renderNotice({
+          title: "Secret Removed",
+          message: `${result.name} remains active, but its complete key can no longer be shown.`,
           tone: "info",
-        }),
-        renderDetailList([
-          { label: "User ID", value: result.user.id },
-          { label: "Username", value: result.user.username },
-          { label: "Email", value: result.user.email || "empty" },
-          { label: "Role", value: result.user.role },
-        ]),
-      );
+        }));
+      });
+      target.append(secretDialog);
+      secretDialog.showModal();
+      await loadKeys();
     } catch (error) {
-      output.replaceChildren(renderNotice({ title: "Unable to Create Account", message: error.message }));
+      output.replaceChildren(renderNotice({ title: "Unable to Create API Key", message: error.message }));
     } finally {
       setFormBusy(form, false);
     }
   });
 
-  return renderDetailPanel({
-    title: "Create Account",
-    note: "Creates an ordinary user account through the authenticated superuser API.",
-    children: [form],
-  });
+  async function revokeKey(key) {
+    if (!window.confirm(`Revoke ${key.name} (${key.refcode})?`)) {
+      return;
+    }
+    try {
+      await postJSON(`/api/auth/api-keys/${encodeURIComponent(key.refcode)}/revoke`, {});
+      await loadKeys();
+    } catch (error) {
+      listOutput.replaceChildren(renderNotice({ title: "Unable to Revoke API Key", message: error.message }));
+    }
+  }
+
+  async function loadKeys() {
+    listCount.textContent = "—";
+    listOutput.replaceChildren(renderNotice({ title: "Loading API Keys", message: "Reading key metadata.", tone: "info" }));
+    try {
+      const result = await getJSON("/api/auth/api-keys");
+      const keys = Array.isArray(result.api_keys) ? result.api_keys : [];
+      listCount.textContent = `${keys.length} total`;
+      listOutput.replaceChildren(keys.length > 0
+        ? renderAPIKeyStatusTable(keys, revokeKey)
+        : renderNotice({ title: "No API Keys", message: "Create a key for MCP, agents, CLI, or automation.", tone: "info" }));
+    } catch (error) {
+      listCount.textContent = "Unavailable";
+      listOutput.replaceChildren(renderNotice({ title: "API Keys Unavailable", message: error.message }));
+    }
+  }
+
+  target.append(renderSection({
+    title: "API Keys",
+    note: "Create, inspect, and revoke programmatic credentials",
+    actions: [renderButton("RETURN", { label: "Return to settings selector", onClick: () => navigateSettings() })],
+    children: [createRegion, listRegion],
+  }));
+  loadKeys();
 }
 
 function renderChangePasswordPanel() {
@@ -443,8 +618,6 @@ function renderLogoutPanel(context) {
 
 function renderAccountDetail(action, context) {
   switch (action) {
-    case "create":
-      return renderCreateUserPanel();
     case "password":
       return renderChangePasswordPanel();
     case "logout":
@@ -459,7 +632,6 @@ function renderAccountPage(target, context, action) {
   nav.setAttribute("aria-label", "Account settings");
   [
     ["overview", "INFO", "Account detail"],
-    ["create", "NEW", "Create account"],
     ["password", "PASSWORD", "Change password"],
     ["logout", "LOGOUT", "Logout"],
   ].forEach(([value, label, ariaLabel]) => {
@@ -478,7 +650,7 @@ function renderAccountPage(target, context, action) {
 
   target.append(renderSection({
     title: "Account",
-    note: "Create accounts, change password, or end the current session",
+    note: "Manage the single administrator account and browser session",
     actions: [renderButton("RETURN", { label: "Return to settings selector", onClick: () => navigateSettings() })],
     children: [layout],
   }));
@@ -495,10 +667,17 @@ function renderSettingsHome(target) {
       onOpen: () => navigateSettings({ section: "audit" }),
     }),
     renderChoice({
+      code: "KEY",
+      meta: "Credentials",
+      title: "API Keys",
+      description: "Create, inspect, and revoke programmatic credentials.",
+      onOpen: () => navigateSettings({ section: "api-keys" }),
+    }),
+    renderChoice({
       code: "ACC",
       meta: "Account",
       title: "Account",
-      description: "Create user accounts, change your password, and logout.",
+      description: "Inspect the administrator account, change its password, and logout.",
       onOpen: () => navigateSettings({ section: "account" }),
     }),
   );
@@ -518,6 +697,8 @@ export function renderSettingsPage(target, _health, route, context = {}) {
 
   if (section === "audit") {
     renderAuditPage(module);
+  } else if (section === "api-keys") {
+    renderAPIKeysPage(module);
   } else if (section === "account") {
     renderAccountPage(module, context, action);
   } else {

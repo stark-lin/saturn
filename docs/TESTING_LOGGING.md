@@ -38,7 +38,7 @@ By default, prioritize testing the service layer. Handler, repo, and platform te
 | --- | --- |
 | Fix bug | Add regression tests that can reproduce the issue |
 | Add or modify service rules | Service unit tests or integration tests |
-| Modify resource-level permissions | Permission matrix tests for owner/shared/superuser, etc.; confirm that status does not relax access; resource non-existence and unauthorized access must both externally manifest as `not_found` |
+| Modify authentication or scopes | Test administrator/API-key principal kinds, API-key scope matrices, revocation/expiry, one-time secret responses, and administrator-only operations; confirm that status does not relax access |
 | Modify API requests or responses | Handler tests, and sync corresponding `docs/api/<MODULE>.md`; update `docs/API.md` simultaneously if shared conventions are involved |
 | Modify repo SQL, sqlc queries, scope helpers, or migrations | Run `go tool sqlc generate`; add repo tests or integration tests with a real database |
 | Modify background jobs or search | Service / orchestration tests, using fake repos |
@@ -125,17 +125,16 @@ func TestHandlerCreateNoteReturnsBadRequestForInvalidJSON(t *testing.T)
 Multi-scenario tests use table-driven tests, letting the case name describe the business scenario:
 
 ```go
-func TestServiceCanReadNote(t *testing.T) {
+func TestPrincipalAllowsDataWrite(t *testing.T) {
     tests := []struct {
         name string
-        actorID int64
-        ownerID int64
-        actorRole string
+        principalKind string
+        scopes []string
         wantAllowed bool
     }{
-        {name: "owner can read own note", actorID: 1, ownerID: 1, actorRole: "user", wantAllowed: true},
-        {name: "other user cannot read note", actorID: 2, ownerID: 1, actorRole: "user", wantAllowed: false},
-        {name: "superuser cannot read another owner note", actorID: 9, ownerID: 1, actorRole: "superuser", wantAllowed: false},
+        {name: "administrator has all scopes", principalKind: "administrator", wantAllowed: true},
+        {name: "write key can write", principalKind: "api_key", scopes: []string{"data:write"}, wantAllowed: true},
+        {name: "read key cannot write", principalKind: "api_key", scopes: []string{"data:read"}, wantAllowed: false},
     }
 
     for _, tt := range tests {
@@ -282,7 +281,7 @@ Unexpected operational failures
 Audit logs are used for business auditing:
 
 ```text
-who did what to which resource and when
+which USR/KEY/SYS actor did what to which resource and when
 only LLM-originated resource reads are audited as READ
 SYS-00000000 identifies system-level targets such as LOGIN and LOGOUT
 audit_logs is append-only; application code may only INSERT or SELECT, and runtime mutation/truncation is rejected
@@ -364,7 +363,7 @@ Fields use lower snake case. Common fields:
 | Field | Meaning |
 | --- | --- |
 | `request_id` | HTTP request id |
-| `actor_id` | Current logged-in subject ID |
+| `actor_ref_code` | Stable `USR-00000001`, `KEY-*`, or `SYS-*` subject identity |
 | `module` | Business module name |
 | `operation` | Current operation name |
 | `resource_type` | Resource type, e.g., `note`, `file` |
@@ -386,7 +385,7 @@ Prohibited from being logged:
 ```text
 password
 token
-api key
+complete API key or API-key hash
 cookie
 authorization header
 session id
@@ -430,7 +429,7 @@ Example:
 log.Error(
     "storage upload failed",
     "request_id", requestID,
-    "actor_id", actor.ID,
+    "actor_ref_code", actor.ActorRefCode(),
     "resource_type", "file",
     "resource_id", fileID,
     "error", err,
@@ -445,7 +444,7 @@ Good example:
 log.Info(
     "job completed",
     "request_id", requestID,
-    "actor_id", actor.ID,
+    "actor_ref_code", actor.ActorRefCode(),
     "job_id", jobID,
     "duration_ms", elapsed.Milliseconds(),
     "count", objectCount,

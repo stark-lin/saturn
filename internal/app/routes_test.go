@@ -335,7 +335,7 @@ func TestPlatformObjectRefRoutesAreRegistered(t *testing.T) {
 	}
 }
 
-func TestAuthAccountRoutesAreRegistered(t *testing.T) {
+func TestAuthAdministratorAndAPIKeyRoutesAreRegistered(t *testing.T) {
 	a := newTestApp(t)
 
 	for _, test := range []struct {
@@ -344,8 +344,9 @@ func TestAuthAccountRoutesAreRegistered(t *testing.T) {
 	}{
 		{method: http.MethodPatch, path: "/api/auth/me"},
 		{method: http.MethodPatch, path: "/api/auth/me/password"},
-		{method: http.MethodPost, path: "/api/auth/users"},
-		{method: http.MethodPatch, path: "/api/auth/users/1/password"},
+		{method: http.MethodGet, path: "/api/auth/api-keys"},
+		{method: http.MethodPost, path: "/api/auth/api-keys"},
+		{method: http.MethodPost, path: "/api/auth/api-keys/KEY-00000001/revoke"},
 	} {
 		t.Run(test.method+" "+test.path, func(t *testing.T) {
 			req := httptest.NewRequest(test.method, test.path, nil)
@@ -357,6 +358,18 @@ func TestAuthAccountRoutesAreRegistered(t *testing.T) {
 				t.Errorf("auth account route status = %d; want %d", rec.Code, http.StatusUnauthorized)
 			}
 		})
+	}
+
+	for _, test := range []struct{ method, path string }{
+		{method: http.MethodPost, path: "/api/auth/users"},
+		{method: http.MethodPatch, path: "/api/auth/users/1/password"},
+	} {
+		req := httptest.NewRequest(test.method, test.path, nil)
+		rec := httptest.NewRecorder()
+		a.Router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("removed multi-user route %s %s status = %d; want %d", test.method, test.path, rec.Code, http.StatusNotFound)
+		}
 	}
 }
 

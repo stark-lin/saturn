@@ -46,7 +46,8 @@ LLM
 └── Provider Audit
 
 Platform
-├── Auth
+├── Administrator Auth
+├── API Keys
 ├── Audit
 ├── Config
 ├── ObjectRef
@@ -127,8 +128,8 @@ Business modules do not directly depend on the Redis client, local FS storage im
 Rules:
 
 ```text
-Auth owns identity, session, password, and authorization entry points
-Audit owns append-only audit record insertion and superuser-only audit queries
+Auth owns the singleton administrator, browser session, password, API key lifecycle, and scope entry points
+Audit owns append-only actor-RefCode record insertion and administrator-only audit queries
 Config owns runtime configuration loading and validation
 Search currently owns ObjectRef metadata HTTP handlers and compatibility metadata lookup
 ObjectRef owns readable reference code generation and shared title/status metadata projections
@@ -146,7 +147,7 @@ platform search does not mutate source records
 platform search delegates metadata reads to platform/ref
 ```
 
-`Platform/ObjectRef` is a unified object reference code capability at the conceptual layer. It provides short, stable, readable `ref_code` for first-class business objects per business module, and maintains `title` and `status` projections used for owner-only metadata queries. These are used for user referencing, LLM calls, search results, and cross-module associations. It does not replace internal database `id`s, does not directly own business rules, and does not bypass business module services / facades. See [OBJECT_REF_CODE.md](OBJECT_REF_CODE.md) for a detailed summary.
+`Platform/ObjectRef` is a unified object reference code capability at the conceptual layer. It provides short, stable, readable `ref_code` for first-class business objects per business module, and maintains `title` and `status` projections used for shared instance metadata queries. These are used for administrator referencing, API clients, LLM calls, search results, and cross-module associations. It does not replace internal database `id`s, does not directly own business rules, and does not bypass business module services / facades. See [OBJECT_REF_CODE.md](OBJECT_REF_CODE.md) for a detailed summary.
 
 `ObjectRef` maintains unified `ref_code`, `title`, `tags`, and `status` metadata projections. Platform metadata returns `object_refs.tags` as an array of `tags` together with the object's `ref_code` and `title`; tagless objects return an empty array. Notes, Files, Accounting, Calendar, and LLM can use tags, but do not each own independent tag relationship tables.
 

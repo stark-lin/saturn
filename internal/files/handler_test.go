@@ -133,7 +133,7 @@ func TestHandlerCreatesListsGetsDownloadsAndDeletesFile(t *testing.T) {
 func TestHandlerMapsFilesErrorsAndInvalidRequests(t *testing.T) {
 	service, _, _, _, storage := newTestService()
 	handler := NewHandler(service)
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	collection, err := service.CreateCollection(context.Background(), actor, CreateCollectionInput{Name: "Receipts"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -186,7 +186,7 @@ func authenticatedFilesRequest(method string, target string, body string) *http.
 		reader = http.NoBody
 	}
 	request := httptest.NewRequest(method, target, reader)
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }
 
 func authenticatedFilesMultipartRequest(t *testing.T, target string, filename string, content string, tags string) *http.Request {
@@ -211,5 +211,5 @@ func authenticatedFilesMultipartRequest(t *testing.T, target string, filename st
 	}
 	request := httptest.NewRequest(http.MethodPost, target, &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }

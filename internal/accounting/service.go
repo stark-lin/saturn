@@ -58,8 +58,8 @@ func NewService(
 }
 
 func (s *Service) ListAccounts(ctx context.Context, actor auth.Principal, query AccountQuery) (AccountPage, error) {
-	if actor.IsZero() {
-		return AccountPage{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "account", 0, 0); err != nil {
+		return AccountPage{}, err
 	}
 	if s.repo == nil {
 		return AccountPage{}, ErrRepositoryUnavailable
@@ -72,8 +72,8 @@ func (s *Service) ListAccounts(ctx context.Context, actor auth.Principal, query 
 }
 
 func (s *Service) CreateAccount(ctx context.Context, actor auth.Principal, input CreateAccountInput) (Account, error) {
-	if actor.IsZero() {
-		return Account{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionCreate, "account", 0, 0); err != nil {
+		return Account{}, err
 	}
 	input, err := normalizeAccountInput(input)
 	if err != nil {
@@ -100,7 +100,7 @@ func (s *Service) CreateAccount(ctx context.Context, actor auth.Principal, input
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: object.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -119,8 +119,8 @@ func (s *Service) CreateAccount(ctx context.Context, actor auth.Principal, input
 }
 
 func (s *Service) GetAccount(ctx context.Context, actor auth.Principal, refCode string) (Account, error) {
-	if actor.IsZero() {
-		return Account{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "account", 0, 0); err != nil {
+		return Account{}, err
 	}
 	if s.repo == nil {
 		return Account{}, ErrRepositoryUnavailable
@@ -129,8 +129,8 @@ func (s *Service) GetAccount(ctx context.Context, actor auth.Principal, refCode 
 }
 
 func (s *Service) DeleteAccount(ctx context.Context, actor auth.Principal, refCode string) error {
-	if actor.IsZero() {
-		return auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionDelete, "account", 0, 0); err != nil {
+		return err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return err
@@ -150,14 +150,14 @@ func (s *Service) DeleteAccount(ctx context.Context, actor auth.Principal, refCo
 		}
 		for _, transaction := range transactions {
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 				TargetRefCode: transaction.RefCode, Result: audit.ResultSuccess, Reason: deleteReasonCascadeAccountDelete,
 			}); err != nil {
 				return err
 			}
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 			TargetRefCode: account.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -179,8 +179,8 @@ func (s *Service) DeleteAccount(ctx context.Context, actor auth.Principal, refCo
 }
 
 func (s *Service) ListTransactions(ctx context.Context, actor auth.Principal, query TransactionQuery) (TransactionPage, error) {
-	if actor.IsZero() {
-		return TransactionPage{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "transaction", 0, 0); err != nil {
+		return TransactionPage{}, err
 	}
 	if s.repo == nil {
 		return TransactionPage{}, ErrRepositoryUnavailable
@@ -193,8 +193,8 @@ func (s *Service) ListTransactions(ctx context.Context, actor auth.Principal, qu
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, actor auth.Principal, input CreateTransactionInput) (Transaction, error) {
-	if actor.IsZero() {
-		return Transaction{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionCreate, "transaction", 0, 0); err != nil {
+		return Transaction{}, err
 	}
 	input, err := normalizeTransactionInput(input)
 	if err != nil {
@@ -231,7 +231,7 @@ func (s *Service) CreateTransaction(ctx context.Context, actor auth.Principal, i
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: object.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -250,8 +250,8 @@ func (s *Service) CreateTransaction(ctx context.Context, actor auth.Principal, i
 }
 
 func (s *Service) GetTransaction(ctx context.Context, actor auth.Principal, refCode string) (Transaction, error) {
-	if actor.IsZero() {
-		return Transaction{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "transaction", 0, 0); err != nil {
+		return Transaction{}, err
 	}
 	if s.repo == nil {
 		return Transaction{}, ErrRepositoryUnavailable
@@ -260,8 +260,8 @@ func (s *Service) GetTransaction(ctx context.Context, actor auth.Principal, refC
 }
 
 func (s *Service) VoidTransaction(ctx context.Context, actor auth.Principal, refCode string) (Transaction, error) {
-	if actor.IsZero() {
-		return Transaction{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionUpdate, "transaction", 0, 0); err != nil {
+		return Transaction{}, err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return Transaction{}, err
@@ -293,7 +293,7 @@ func (s *Service) VoidTransaction(ctx context.Context, actor auth.Principal, ref
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionUpdate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionUpdate,
 			TargetRefCode: transaction.RefCode, Result: audit.ResultSuccess, Reason: "void",
 		}); err != nil {
 			return err
@@ -328,7 +328,7 @@ func (s *Service) recordWriteFailure(ctx context.Context, actor auth.Principal, 
 		reason = "not_found"
 	}
 	auditErr := s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: action,
+		ActorRefCode: actor.ActorRefCode(), Action: action,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 	if auditErr != nil {

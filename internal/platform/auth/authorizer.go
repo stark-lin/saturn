@@ -18,10 +18,11 @@ func (a *Authorizer) Can(principal Principal, action Action, resource Resource) 
 	if principal.IsZero() {
 		return ErrUnauthenticated
 	}
-	if principal.IsSuperuser() {
-		return nil
+	requiredScope := ScopeDataRead
+	if action != ActionRead {
+		requiredScope = ScopeDataWrite
 	}
-	if resource.OwnerID == principal.ID {
+	if principal.Allows(requiredScope) {
 		return nil
 	}
 	return ErrForbidden

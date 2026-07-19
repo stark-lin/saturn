@@ -4,17 +4,16 @@ package auth
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	platformredis "github.com/stark-lin/saturn/internal/platform/redis"
 )
 
 type Session struct {
-	ID        string
-	UserID    int64
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID                   string
+	AdministratorRefCode string
+	ExpiresAt            time.Time
+	CreatedAt            time.Time
 }
 
 func (s Session) Expired(now time.Time) bool {
@@ -36,14 +35,14 @@ func NewRedisSessionStore(client *platformredis.Client) *RedisSessionStore {
 }
 
 func (s *RedisSessionStore) Save(ctx context.Context, session Session) error {
-	if s == nil || s.client == nil || session.ID == "" || session.UserID <= 0 {
+	if s == nil || s.client == nil || session.ID == "" || session.AdministratorRefCode != AdministratorRefCode {
 		return fmt.Errorf("valid session and redis client are required")
 	}
 	ttl := time.Until(session.ExpiresAt)
 	if ttl <= 0 {
 		return fmt.Errorf("session expiration must be in the future")
 	}
-	return s.client.Set(ctx, sessionKey(session.ID), strconv.FormatInt(session.UserID, 10), ttl)
+	return s.client.Set(ctx, sessionKey(session.ID), session.AdministratorRefCode, ttl)
 }
 
 func (s *RedisSessionStore) Active(ctx context.Context, sessionID string) (bool, error) {

@@ -91,8 +91,7 @@ file versioning
 preview generation
 thumbnail generation
 trash retention
-share link expiration
-attachment ownership checks
+attachment link integrity checks
 object reference diagnostics
 ```
 

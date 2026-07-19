@@ -1,419 +1,318 @@
-// This file tests authentication login, token, and session behavior.
+// This file tests the single-administrator and API-key authentication model.
 package auth
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 )
 
-func TestEnsureDevelopmentAdminCreatesUsableSuperuser(t *testing.T) {
+func TestEnsureDevelopmentAdminCreatesHashedSingletonCredential(t *testing.T) {
 	initializer := &recordingInitializer{}
-
 	if err := EnsureDevelopmentAdmin(context.Background(), initializer); err != nil {
-		t.Fatalf("ensure development admin: %v", err)
+		t.Fatalf("ensure development administrator: %v", err)
 	}
-	if initializer.username != "admin" || initializer.role != RoleSuperuser {
-		t.Fatalf("created user = %q/%q, want admin/superuser", initializer.username, initializer.role)
-	}
-	if !VerifyPassword(initializer.passwordHash, "admin") {
-		t.Fatal("expected stored development password hash to verify admin password")
-	}
-	if initializer.passwordHash == "admin" {
-		t.Fatal("expected development password to be hashed")
+	if initializer.username != "admin" || !VerifyPassword(initializer.passwordHash, "admin") {
+		t.Fatalf("initializer = %#v, want usable hashed admin credential", initializer)
 	}
 }
 
-func TestServiceLoginAuthenticateAndLogout(t *testing.T) {
-	service := newTestService(t, "admin")
-	ctx := context.Background()
-
-	result, err := service.Login(ctx, "admin", "admin")
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	if result.User.Username != "admin" || result.User.Role != RoleSuperuser || result.Token == "" {
-		t.Fatalf("login result = %#v, want admin superuser token", result)
-	}
-
-	principal, err := service.Authenticate(ctx, result.Token)
-	if err != nil {
-		t.Fatalf("authenticate issued token: %v", err)
-	}
-	if principal.Username != "admin" || !principal.IsSuperuser() {
-		t.Fatalf("principal = %#v, want admin superuser", principal)
-	}
-
-	if err := service.Logout(ctx, result.Token); err != nil {
-		t.Fatalf("logout: %v", err)
-	}
-	if _, err := service.Authenticate(ctx, result.Token); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatalf("authenticate revoked token error = %v, want unauthenticated", err)
-	}
-}
-
-func TestServiceLoginRejectsWrongPassword(t *testing.T) {
-	service := newTestService(t, "admin")
-
-	_, err := service.Login(context.Background(), "admin", "wrong")
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("login error = %v, want invalid credentials", err)
-	}
-}
-
-func TestServiceAuditsAuthenticationOutcomes(t *testing.T) {
-	recorder := &fakeAuditRecorder{}
-	service := newTestServiceWithAudit(t, "admin", recorder)
-
+func TestServiceLoginAuthenticateAndLogoutAdministrator(t *testing.T) {
+	service := newTestService(t, nil)
 	result, err := service.Login(context.Background(), "admin", "admin")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	if _, err := service.Login(context.Background(), "admin", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("wrong password error = %v", err)
+	if result.User.RefCode != AdministratorRefCode || result.User.Kind != PrincipalKindAdministrator || result.Token == "" {
+		t.Fatalf("login result = %#v", result)
+	}
+	principal, err := service.Authenticate(context.Background(), result.Token)
+	if err != nil || !principal.IsAdministrator() {
+		t.Fatalf("authenticate principal = %#v, err = %v", principal, err)
 	}
 	if err := service.Logout(context.Background(), result.Token); err != nil {
 		t.Fatalf("logout: %v", err)
 	}
-	want := []string{"LOGIN/SUCCESS/1", "LOGIN/DENIED/0/invalid_credentials", "LOGOUT/SUCCESS/1"}
-	if len(recorder.calls) != len(want) {
-		t.Fatalf("audit calls = %#v, want %#v", recorder.calls, want)
+	if _, err := service.Authenticate(context.Background(), result.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("authenticate revoked token error = %v", err)
 	}
-	for i := range want {
-		if recorder.calls[i] != want[i] {
-			t.Fatalf("audit calls = %#v, want %#v", recorder.calls, want)
+}
+
+func TestServiceCreatesAuthenticatesAndRevokesAPIKey(t *testing.T) {
+	recorder := &fakeAuditRecorder{}
+	service := newTestService(t, recorder)
+	service.credential = func() (string, string, error) {
+		return "KEY-4F8A2C10", "sat_sk_test-secret-value", nil
+	}
+	administrator := testAdministrator()
+	result, err := service.CreateAPIKey(context.Background(), administrator, CreateAPIKeyInput{
+		Name: "saturn-mcp", Scopes: []ScopeName{ScopeDataWrite, ScopeDataRead},
+	})
+	if err != nil {
+		t.Fatalf("create api key: %v", err)
+	}
+	if result.APIKey != "sat_sk_test-secret-value" || result.RefCode != "KEY-4F8A2C10" {
+		t.Fatalf("create api key result = %#v", result)
+	}
+	principal, err := service.Authenticate(context.Background(), result.APIKey)
+	if err != nil {
+		t.Fatalf("authenticate api key: %v", err)
+	}
+	if principal.RefCode != result.RefCode || principal.Kind != PrincipalKindAPIKey || principal.ID != 1 || !principal.Allows(ScopeDataWrite) {
+		t.Fatalf("api key principal = %#v", principal)
+	}
+	keys, err := service.ListAPIKeys(context.Background(), administrator)
+	if err != nil || len(keys) != 1 || keys[0].KeyHash != "" || keys[0].Status != APIKeyStatusActive {
+		t.Fatalf("listed api keys = %#v, err = %v", keys, err)
+	}
+	revoked, err := service.RevokeAPIKey(context.Background(), administrator, result.RefCode)
+	if err != nil || revoked.Status != APIKeyStatusRevoked {
+		t.Fatalf("revoked key = %#v, err = %v", revoked, err)
+	}
+	if _, err := service.Authenticate(context.Background(), result.APIKey); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("authenticate revoked key error = %v", err)
+	}
+	if len(recorder.actions) != 2 || recorder.actions[0].actorRefCode != AdministratorRefCode || recorder.actions[0].targetRefCode != result.RefCode {
+		t.Fatalf("audit actions = %#v", recorder.actions)
+	}
+}
+
+func TestServiceRejectsInvalidOrExpiredAPIKeyConfiguration(t *testing.T) {
+	service := newTestService(t, nil)
+	service.credential = func() (string, string, error) { return "KEY-A92D77E1", "sat_sk_secret", nil }
+	expired := service.now().Add(-time.Minute)
+	for _, input := range []CreateAPIKeyInput{
+		{Name: "Invalid Name", Scopes: []ScopeName{ScopeDataRead}},
+		{Name: "missing-scope"},
+		{Name: "unknown-scope", Scopes: []ScopeName{"admin"}},
+		{Name: "expired", Scopes: []ScopeName{ScopeDataRead}, ExpiresAt: &expired},
+	} {
+		if _, err := service.CreateAPIKey(context.Background(), testAdministrator(), input); !errors.Is(err, ErrInvalidAPIKey) {
+			t.Fatalf("input %#v error = %v, want invalid api key", input, err)
 		}
 	}
 }
 
-func TestServiceCreateUserRequiresSuperuserAndHashesPassword(t *testing.T) {
-	recorder := &fakeAuditRecorder{}
-	service := newTestServiceWithAudit(t, "admin", recorder)
-	ctx := context.Background()
-
-	createdUser, err := service.CreateUser(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, CreateUserInput{
-		Username: " alice ",
-		Email:    " alice@example.com ",
-		Password: "secret",
-	})
+func TestServiceAPIKeyNameCannotBeReusedAfterRevocation(t *testing.T) {
+	service := newTestService(t, nil)
+	sequence := 0
+	service.credential = func() (string, string, error) {
+		sequence++
+		if sequence == 1 {
+			return "KEY-00000001", "sat_sk_first-secret-value", nil
+		}
+		return "KEY-00000002", "sat_sk_second-secret-value", nil
+	}
+	first, err := service.CreateAPIKey(context.Background(), testAdministrator(), CreateAPIKeyInput{Name: "backup", Scopes: []ScopeName{ScopeDataRead}})
 	if err != nil {
-		t.Fatalf("create user: %v", err)
+		t.Fatalf("create first key: %v", err)
 	}
-	if createdUser.Username != "alice" || createdUser.Email != "alice@example.com" || createdUser.Role != RoleUser {
-		t.Fatalf("created user = %#v", createdUser)
+	if _, err := service.RevokeAPIKey(context.Background(), testAdministrator(), first.RefCode); err != nil {
+		t.Fatalf("revoke first key: %v", err)
 	}
-	storedUser, err := service.repo.FindUserByUsername(ctx, "alice")
-	if err != nil {
-		t.Fatalf("find created user: %v", err)
-	}
-	if storedUser.PasswordHash == "secret" || !VerifyPassword(storedUser.PasswordHash, "secret") {
-		t.Fatalf("stored password hash is not usable")
-	}
-	if len(recorder.calls) != 1 || recorder.calls[0] != "CREATE/SUCCESS/1/create_user" {
-		t.Fatalf("audit calls = %#v", recorder.calls)
-	}
-
-	_, err = service.CreateUser(ctx, Principal{ID: 2, Username: "bob", Role: RoleUser}, CreateUserInput{
-		Username: "blocked",
-		Password: "secret",
-	})
-	if !errors.Is(err, ErrForbidden) {
-		t.Fatalf("non-superuser create error = %v, want forbidden", err)
+	if _, err := service.CreateAPIKey(context.Background(), testAdministrator(), CreateAPIKeyInput{Name: "backup", Scopes: []ScopeName{ScopeDataRead}}); !errors.Is(err, ErrAPIKeyConflict) {
+		t.Fatalf("reuse revoked name error = %v, want conflict", err)
 	}
 }
 
-func TestServiceCreateUserRejectsSuperuserRole(t *testing.T) {
-	service := newTestService(t, "admin")
-	ctx := context.Background()
-
-	_, err := service.CreateUser(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, CreateUserInput{
-		Username: "root",
-		Password: "secret",
-		Role:     RoleSuperuser,
-	})
-	if !errors.Is(err, ErrInvalidUser) {
-		t.Fatalf("create superuser error = %v, want invalid user", err)
+func TestServiceExpiredAPIKeyCannotAuthenticateAndListsAsExpired(t *testing.T) {
+	service := newTestService(t, nil)
+	service.credential = func() (string, string, error) {
+		return "KEY-A92D77E1", "sat_sk_expiring-secret-value", nil
 	}
-}
-
-func TestServiceUpdateOwnUserAndChangeOwnPassword(t *testing.T) {
-	service := newTestService(t, "admin")
-	ctx := context.Background()
-	actor := Principal{ID: 1, Username: "admin", Role: RoleSuperuser}
-	username := " owner "
-	email := " owner@example.com "
-
-	updatedUser, err := service.UpdateOwnUser(ctx, actor, UpdateOwnUserInput{
-		Username: &username,
-		Email:    &email,
+	expiresAt := service.now().Add(time.Minute)
+	created, err := service.CreateAPIKey(context.Background(), testAdministrator(), CreateAPIKeyInput{
+		Name: "expiring", Scopes: []ScopeName{ScopeDataRead}, ExpiresAt: &expiresAt,
 	})
 	if err != nil {
-		t.Fatalf("update own user: %v", err)
-	}
-	if updatedUser.Username != "owner" || updatedUser.Email != "owner@example.com" {
-		t.Fatalf("updated user = %#v", updatedUser)
+		t.Fatalf("create expiring API key: %v", err)
 	}
 
-	if err := service.ChangeOwnPassword(ctx, Principal{ID: 1, Username: "owner", Role: RoleSuperuser}, ChangeOwnPasswordInput{
-		CurrentPassword: "admin",
-		NewPassword:     "new-secret",
-	}); err != nil {
-		t.Fatalf("change own password: %v", err)
-	}
-	if _, err := service.Login(ctx, "owner", "new-secret"); err != nil {
-		t.Fatalf("login with changed password: %v", err)
-	}
-}
-
-func TestServiceChangeOwnPasswordRejectsWrongCurrentPassword(t *testing.T) {
-	service := newTestService(t, "admin")
-
-	err := service.ChangeOwnPassword(context.Background(), Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, ChangeOwnPasswordInput{
-		CurrentPassword: "wrong",
-		NewPassword:     "new-secret",
-	})
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("change password error = %v, want invalid credentials", err)
-	}
-}
-
-func TestServiceOrdinaryUserCanChangeOwnPassword(t *testing.T) {
-	service := newTestService(t, "admin")
-	ctx := context.Background()
-	_, err := service.CreateUser(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, CreateUserInput{
-		Username: "alice",
-		Password: "secret",
-		Role:     RoleUser,
-	})
-	if err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-
-	if err := service.ChangeOwnPassword(ctx, Principal{ID: 2, Username: "alice", Role: RoleUser}, ChangeOwnPasswordInput{
-		CurrentPassword: "secret",
-		NewPassword:     "user-new-secret",
-	}); err != nil {
-		t.Fatalf("ordinary user change own password: %v", err)
-	}
-	if _, err := service.Login(ctx, "alice", "user-new-secret"); err != nil {
-		t.Fatalf("login with ordinary user changed password: %v", err)
-	}
-}
-
-func TestServiceResetUserPasswordRules(t *testing.T) {
-	service := newTestService(t, "admin")
-	ctx := context.Background()
-	_, err := service.CreateUser(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, CreateUserInput{
-		Username: "alice",
-		Password: "secret",
-		Role:     RoleUser,
-	})
-	if err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	passwordHash, err := HashPassword("secret")
-	if err != nil {
-		t.Fatalf("hash legacy superuser password: %v", err)
-	}
 	repo := service.repo.(*fakeRepository)
-	repo.users["root"] = User{ID: 3, Username: "root", Role: RoleSuperuser, PasswordHash: passwordHash}
-	repo.nextID = 4
+	key := repo.apiKeys[created.RefCode]
+	expiredAt := service.now().Add(-time.Minute)
+	key.ExpiresAt = &expiredAt
+	repo.apiKeys[created.RefCode] = key
 
-	if err := service.ResetUserPassword(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, 2, "reset-secret"); err != nil {
-		t.Fatalf("reset user password: %v", err)
+	if _, err := service.Authenticate(context.Background(), created.APIKey); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("expired API key authentication error = %v", err)
 	}
-	if _, err := service.Login(ctx, "alice", "reset-secret"); err != nil {
-		t.Fatalf("login with reset password: %v", err)
-	}
-	if err := service.ResetUserPassword(ctx, Principal{ID: 2, Username: "alice", Role: RoleUser}, 1, "blocked"); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("ordinary user reset error = %v, want forbidden", err)
-	}
-	if err := service.ResetUserPassword(ctx, Principal{ID: 1, Username: "admin", Role: RoleSuperuser}, 3, "blocked"); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("other superuser reset error = %v, want forbidden", err)
+	keys, err := service.ListAPIKeys(context.Background(), testAdministrator())
+	if err != nil || len(keys) != 1 || keys[0].Status != APIKeyStatusExpired {
+		t.Fatalf("expired API key list = %#v, error = %v", keys, err)
 	}
 }
 
-func TestTokenManagerRejectsExpiredToken(t *testing.T) {
+func TestServiceUpdatesOnlyAdministratorAccount(t *testing.T) {
+	service := newTestService(t, nil)
+	username := " owner "
+	updated, err := service.UpdateAdministrator(context.Background(), testAdministrator(), UpdateAdministratorInput{Username: &username})
+	if err != nil || updated.Username != "owner" {
+		t.Fatalf("updated administrator = %#v, err = %v", updated, err)
+	}
+	apiKey := Principal{ID: 1, RefCode: "KEY-00000001", Kind: PrincipalKindAPIKey, Scopes: []ScopeName{ScopeDataWrite}}
+	if _, err := service.UpdateAdministrator(context.Background(), apiKey, UpdateAdministratorInput{Username: &username}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("api key update administrator error = %v", err)
+	}
+}
+
+func TestTokenManagerRejectsExpiredAndTamperedTokens(t *testing.T) {
 	manager, err := NewTokenManager("test-secret", time.Hour)
 	if err != nil {
 		t.Fatalf("new token manager: %v", err)
 	}
-	now := time.Date(2026, time.May, 24, 2, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.July, 19, 2, 0, 0, 0, time.UTC)
 	manager.now = func() time.Time { return now }
-	token, err := manager.Issue(Principal{ID: 1, Username: "admin", Role: RoleSuperuser})
+	token, err := manager.Issue(testAdministrator())
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
-
+	if _, err := manager.Verify("x" + token.Value[1:]); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("tampered token error = %v", err)
+	}
 	now = token.ExpiresAt
 	if _, err := manager.Verify(token.Value); !errors.Is(err, ErrInvalidToken) {
-		t.Fatalf("verify expired token error = %v, want invalid token", err)
+		t.Fatalf("expired token error = %v", err)
 	}
 }
 
-func TestTokenManagerRejectsTamperedToken(t *testing.T) {
-	manager, err := NewTokenManager("test-secret", time.Hour)
-	if err != nil {
-		t.Fatalf("new token manager: %v", err)
-	}
-	token, err := manager.Issue(Principal{ID: 1, Username: "admin", Role: RoleSuperuser})
-	if err != nil {
-		t.Fatalf("issue token: %v", err)
-	}
-	tampered := "x" + token.Value[1:]
-	if _, err := manager.Verify(tampered); !errors.Is(err, ErrInvalidToken) {
-		t.Fatalf("verify tampered token error = %v, want invalid token", err)
-	}
-}
-
-func newTestService(t *testing.T, username string) *Service {
-	return newTestServiceWithAudit(t, username, nil)
-}
-
-func newTestServiceWithAudit(t *testing.T, username string, recorder AuditRecorder) *Service {
+func newTestService(t *testing.T, recorder AuditRecorder) *Service {
 	t.Helper()
 	passwordHash, err := HashPassword("admin")
 	if err != nil {
-		t.Fatalf("hash test password: %v", err)
+		t.Fatalf("hash password: %v", err)
 	}
-	repo := &fakeRepository{nextID: 2, users: map[string]User{
-		username: {ID: 1, Username: username, Role: RoleSuperuser, PasswordHash: passwordHash},
-	}}
+	repo := &fakeRepository{
+		administrator: User{ID: 1, RefCode: AdministratorRefCode, Username: "admin", PasswordHash: passwordHash},
+		apiKeys:       make(map[string]APIKey),
+	}
 	tokens, err := NewTokenManager("test-secret", time.Hour)
 	if err != nil {
 		t.Fatalf("new token manager: %v", err)
 	}
-	return NewService(repo, &fakeSessions{active: make(map[string]bool)}, tokens, recorder)
+	service := NewService(repo, &fakeSessions{active: make(map[string]bool)}, tokens, recorder)
+	service.now = func() time.Time { return time.Date(2026, time.July, 19, 10, 0, 0, 0, time.UTC) }
+	return service
 }
 
-type fakeAuditRecorder struct {
-	calls []string
-	err   error
-}
-
-func (r *fakeAuditRecorder) RecordAuthentication(_ context.Context, actorUserID int64, action string, result string, reason string) error {
-	call := action + "/" + result + "/" + fmt.Sprint(actorUserID)
-	if reason != "" {
-		call += "/" + reason
-	}
-	r.calls = append(r.calls, call)
-	return r.err
+func testAdministrator() Principal {
+	return Principal{ID: 1, RefCode: AdministratorRefCode, Kind: PrincipalKindAdministrator, Username: "admin"}
 }
 
 type fakeRepository struct {
-	users  map[string]User
-	nextID int64
+	administrator User
+	apiKeys       map[string]APIKey
+	usedRefCode   string
 }
 
-func (r *fakeRepository) FindUserByUsername(_ context.Context, username string) (User, error) {
-	user, ok := r.users[username]
+func (r *fakeRepository) FindAdministratorByUsername(_ context.Context, username string) (User, error) {
+	if r.administrator.Username != username {
+		return User{}, sql.ErrNoRows
+	}
+	return r.administrator, nil
+}
+
+func (r *fakeRepository) FindAdministratorByRefCode(_ context.Context, refCode string) (User, error) {
+	if r.administrator.RefCode != refCode {
+		return User{}, sql.ErrNoRows
+	}
+	return r.administrator, nil
+}
+
+func (r *fakeRepository) FindAdministrator(context.Context) (User, error) {
+	return r.administrator, nil
+}
+
+func (r *fakeRepository) UpdateAdministratorProfile(_ context.Context, username string, email string) (User, error) {
+	r.administrator.Username = username
+	r.administrator.Email = email
+	return r.administrator, nil
+}
+
+func (r *fakeRepository) UpdateAdministratorPassword(_ context.Context, passwordHash string) (User, error) {
+	r.administrator.PasswordHash = passwordHash
+	return r.administrator, nil
+}
+
+func (r *fakeRepository) CreateAPIKey(_ context.Context, input CreateAPIKeyRecord) (APIKey, error) {
+	for _, existing := range r.apiKeys {
+		if existing.Name == input.Name || existing.RefCode == input.RefCode || existing.KeyHash == input.KeyHash {
+			return APIKey{}, ErrAPIKeyConflict
+		}
+	}
+	key := APIKey{RefCode: input.RefCode, Name: input.Name, KeyPrefix: input.KeyPrefix, KeyHash: input.KeyHash, Scopes: input.Scopes, CreatedAt: time.Date(2026, time.July, 19, 10, 0, 0, 0, time.UTC), ExpiresAt: input.ExpiresAt}
+	r.apiKeys[key.RefCode] = key
+	return key, nil
+}
+
+func (r *fakeRepository) UseAPIKey(_ context.Context, hash string) (APIKey, error) {
+	for _, key := range r.apiKeys {
+		if key.KeyHash == hash && key.RevokedAt == nil && (key.ExpiresAt == nil || key.ExpiresAt.After(time.Date(2026, time.July, 19, 10, 0, 0, 0, time.UTC))) {
+			r.usedRefCode = key.RefCode
+			return key, nil
+		}
+	}
+	return APIKey{}, sql.ErrNoRows
+}
+
+func (r *fakeRepository) FindAPIKeyByRefCode(_ context.Context, refCode string) (APIKey, error) {
+	key, ok := r.apiKeys[refCode]
 	if !ok {
-		return User{}, errors.New("not found")
+		return APIKey{}, sql.ErrNoRows
 	}
-	return user, nil
+	return key, nil
 }
 
-func (r *fakeRepository) FindUserByID(_ context.Context, id int64) (User, error) {
-	for _, user := range r.users {
-		if user.ID == id {
-			return user, nil
-		}
+func (r *fakeRepository) ListAPIKeys(context.Context) ([]APIKey, error) {
+	keys := make([]APIKey, 0, len(r.apiKeys))
+	for _, key := range r.apiKeys {
+		keys = append(keys, key)
 	}
-	return User{}, errors.New("not found")
+	return keys, nil
 }
 
-func (r *fakeRepository) CreateUser(_ context.Context, input CreateUserRecord) (User, error) {
-	if _, ok := r.users[input.Username]; ok {
-		return User{}, ErrUserConflict
+func (r *fakeRepository) RevokeAPIKey(_ context.Context, refCode string) (APIKey, error) {
+	key, ok := r.apiKeys[refCode]
+	if !ok {
+		return APIKey{}, sql.ErrNoRows
 	}
-	for _, user := range r.users {
-		if input.Email != "" && user.Email == input.Email {
-			return User{}, ErrUserConflict
-		}
-	}
-	if r.nextID == 0 {
-		r.nextID = 1
-	}
-	user := User{
-		ID:           r.nextID,
-		Username:     input.Username,
-		Email:        input.Email,
-		Role:         input.Role,
-		PasswordHash: input.PasswordHash,
-	}
-	r.nextID++
-	r.users[user.Username] = user
-	return user, nil
+	now := time.Date(2026, time.July, 19, 11, 0, 0, 0, time.UTC)
+	key.RevokedAt = &now
+	r.apiKeys[refCode] = key
+	return key, nil
 }
 
-func (r *fakeRepository) UpdateUserProfile(_ context.Context, id int64, username string, email string) (User, error) {
-	var current User
-	var currentKey string
-	for key, user := range r.users {
-		if user.ID == id {
-			current = user
-			currentKey = key
-			break
-		}
-	}
-	if current.ID == 0 {
-		return User{}, errors.New("not found")
-	}
-	for key, user := range r.users {
-		if key != currentKey && user.Username == username {
-			return User{}, ErrUserConflict
-		}
-		if key != currentKey && email != "" && user.Email == email {
-			return User{}, ErrUserConflict
-		}
-	}
-	delete(r.users, currentKey)
-	current.Username = username
-	current.Email = email
-	r.users[current.Username] = current
-	return current, nil
-}
-
-func (r *fakeRepository) UpdateUserPassword(_ context.Context, id int64, passwordHash string) (User, error) {
-	for key, user := range r.users {
-		if user.ID == id {
-			user.PasswordHash = passwordHash
-			r.users[key] = user
-			return user, nil
-		}
-	}
-	return User{}, errors.New("not found")
-}
-
-type fakeSessions struct {
-	active map[string]bool
-}
+type fakeSessions struct{ active map[string]bool }
 
 func (s *fakeSessions) Save(_ context.Context, session Session) error {
 	s.active[session.ID] = true
 	return nil
 }
+func (s *fakeSessions) Active(_ context.Context, id string) (bool, error) { return s.active[id], nil }
+func (s *fakeSessions) Delete(_ context.Context, id string) error         { delete(s.active, id); return nil }
 
-func (s *fakeSessions) Active(_ context.Context, sessionID string) (bool, error) {
-	return s.active[sessionID], nil
+type recordedActorAction struct{ actorRefCode, action, targetRefCode, result, reason string }
+type fakeAuditRecorder struct {
+	authentication []recordedActorAction
+	actions        []recordedActorAction
+	err            error
 }
 
-func (s *fakeSessions) Delete(_ context.Context, sessionID string) error {
-	delete(s.active, sessionID)
-	return nil
+func (r *fakeAuditRecorder) RecordAuthentication(_ context.Context, actorRefCode, action, result, reason string) error {
+	r.authentication = append(r.authentication, recordedActorAction{actorRefCode: actorRefCode, action: action, result: result, reason: reason})
+	return r.err
 }
 
-type recordingInitializer struct {
-	username     string
-	role         Role
-	passwordHash string
+func (r *fakeAuditRecorder) RecordActorAction(_ context.Context, actorRefCode, action, targetRefCode, result, reason string) error {
+	r.actions = append(r.actions, recordedActorAction{actorRefCode: actorRefCode, action: action, targetRefCode: targetRefCode, result: result, reason: reason})
+	return r.err
 }
 
-func (r *recordingInitializer) CreateUserIfMissing(_ context.Context, username string, role Role, passwordHash string) error {
-	r.username = username
-	r.role = role
-	r.passwordHash = passwordHash
+type recordingInitializer struct{ username, passwordHash string }
+
+func (r *recordingInitializer) CreateAdministratorIfMissing(_ context.Context, username, passwordHash string) error {
+	r.username, r.passwordHash = username, passwordHash
 	return nil
 }

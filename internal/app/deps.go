@@ -74,7 +74,7 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 		Events:     httpx.NewBroker(),
 		Logger:     log,
 		Redis:      redisClient,
-		Auth:       auth.NewService(authRepo, auth.NewRedisSessionStore(redisClient), tokenManager, auditService),
+		Auth:       auth.NewServiceWithTransactions(authRepo, auth.NewRedisSessionStore(redisClient), tokenManager, transactionRunner, auditService),
 		Audits:     auditService,
 		References: ref.NewService(ref.NewSQLRepository(database.DB)),
 		StartedAt:  time.Now().UTC(),

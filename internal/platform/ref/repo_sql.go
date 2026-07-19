@@ -64,15 +64,12 @@ func (r *SQLRepository) FindByCode(ctx context.Context, code string) (ObjectRef,
 	return objectRefFromDatabaseRow(row), nil
 }
 
-func (r *SQLRepository) ListRecentByOwner(ctx context.Context, ownerID int64, limit int) ([]ObjectRef, error) {
+func (r *SQLRepository) ListRecent(ctx context.Context, limit int) ([]ObjectRef, error) {
 	queries, err := r.queries(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := queries.ListRecentObjectRefsByOwner(ctx, refsqlc.ListRecentObjectRefsByOwnerParams{
-		OwnerID: ownerID,
-		Limit:   int32(limit),
-	})
+	rows, err := queries.ListRecentObjectRefs(ctx, int32(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +80,11 @@ func (r *SQLRepository) ListRecentByOwner(ctx context.Context, ownerID int64, li
 	return objects, nil
 }
 
-func (r *SQLRepository) SearchByOwner(ctx context.Context, ownerID int64, query MetadataSearchQuery) ([]ObjectRef, error) {
+func (r *SQLRepository) Search(ctx context.Context, query MetadataSearchQuery) ([]ObjectRef, error) {
 	if r == nil || r.database == nil {
 		return nil, fmt.Errorf("object ref database is required")
 	}
-	statement, arguments := metadataSearchStatement(ownerID, query)
+	statement, arguments := metadataSearchStatement(query)
 	rows, err := platformdb.ExecutorFromContext(ctx, r.database).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, err
@@ -161,12 +158,12 @@ func (r *SQLRepository) queries(ctx context.Context) (*refsqlc.Queries, error) {
 	return refsqlc.New(platformdb.ExecutorFromContext(ctx, r.database)), nil
 }
 
-func metadataSearchStatement(ownerID int64, query MetadataSearchQuery) (string, []any) {
+func metadataSearchStatement(query MetadataSearchQuery) (string, []any) {
 	var statement strings.Builder
 	statement.WriteString(`SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
-WHERE owner_id = $1`)
-	arguments := []any{ownerID}
+WHERE TRUE`)
+	arguments := make([]any, 0, 8)
 	addArgument := func(value any) string {
 		arguments = append(arguments, value)
 		return fmt.Sprintf("$%d", len(arguments))

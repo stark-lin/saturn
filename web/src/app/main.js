@@ -57,9 +57,7 @@ async function renderAuthenticated(user) {
   } catch (_error) {
     health = { status: "offline" };
   }
-  const availableRoutes = user.role === "superuser"
-    ? routes
-    : routes.filter((route) => route.view !== "settings");
+  const availableRoutes = routes;
   let activeRoute = findRouteByHash(window.location.hash, availableRoutes);
   let shell;
 

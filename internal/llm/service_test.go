@@ -64,8 +64,8 @@ func TestCreateRequestPersistsQueuedRequest(t *testing.T) {
 	if repo.createdRequest.ResponseStatus != ResponseStatusQueued {
 		t.Fatalf("initial response status = %q, want queued", repo.createdRequest.ResponseStatus)
 	}
-	if repo.createdRequest.ActorUserID != testActor().ID {
-		t.Fatalf("actor user id = %d, want %d", repo.createdRequest.ActorUserID, testActor().ID)
+	if repo.createdRequest.ActorRefCode != testActor().ActorRefCode() {
+		t.Fatalf("actor refcode = %q, want %q", repo.createdRequest.ActorRefCode, testActor().ActorRefCode())
 	}
 	if client.calls != 0 {
 		t.Fatalf("provider calls = %d, want 0 before worker", client.calls)
@@ -136,7 +136,7 @@ func TestCreateSessionAssociatesTags(t *testing.T) {
 	}
 }
 
-func TestListSessionsNormalizesPaginationAndScopesByActor(t *testing.T) {
+func TestListSessionsNormalizesPaginationAndUsesSharedInstanceScope(t *testing.T) {
 	repo := newFakeRepository()
 	service := NewService(ServiceDependencies{Repository: repo})
 
@@ -150,16 +150,16 @@ func TestListSessionsNormalizesPaginationAndScopesByActor(t *testing.T) {
 	if repo.listLimit != DefaultLimit || repo.listOffset != 3 {
 		t.Fatalf("repo pagination = %d/%d", repo.listLimit, repo.listOffset)
 	}
-	if repo.listScope.All || repo.listScope.OwnerID != testActor().ID {
+	if !repo.listScope.All {
 		t.Fatalf("scope = %#v", repo.listScope)
 	}
 
-	superuser := auth.Principal{ID: 9, Role: auth.RoleSuperuser}
-	if _, err := service.ListSessions(context.Background(), superuser, 10, 0); err != nil {
-		t.Fatalf("superuser ListSessions error = %v", err)
+	administrator := auth.Principal{ID: 9, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
+	if _, err := service.ListSessions(context.Background(), administrator, 10, 0); err != nil {
+		t.Fatalf("administrator ListSessions error = %v", err)
 	}
 	if !repo.listScope.All {
-		t.Fatalf("superuser scope = %#v", repo.listScope)
+		t.Fatalf("administrator scope = %#v", repo.listScope)
 	}
 }
 
@@ -193,7 +193,7 @@ func TestGetSessionReturnsRequestsWithPagination(t *testing.T) {
 	}
 }
 
-func TestGetRequestUsesActorScope(t *testing.T) {
+func TestGetRequestUsesSharedInstanceScope(t *testing.T) {
 	repo := newFakeRepository()
 	repo.createdRequest = Request{ID: 2, OwnerID: 1, SessionID: 1, RefCode: "LLM-00000002", ResponseStatus: ResponseStatusSuccess}
 	service := NewService(ServiceDependencies{Repository: repo})
@@ -205,7 +205,7 @@ func TestGetRequestUsesActorScope(t *testing.T) {
 	if request.RefCode != "LLM-00000002" {
 		t.Fatalf("request = %#v", request)
 	}
-	if repo.findRequestScope.All || repo.findRequestScope.OwnerID != testActor().ID {
+	if !repo.findRequestScope.All {
 		t.Fatalf("scope = %#v", repo.findRequestScope)
 	}
 }
@@ -383,7 +383,7 @@ func TestCreateRequestStopsBeforePersistenceWhenReferenceDenied(t *testing.T) {
 	}
 }
 
-func TestCreateRequestRecordsDeniedAuditWhenLockedSessionOwnerChanges(t *testing.T) {
+func TestCreateRequestDoesNotApplyUserOwnershipIsolation(t *testing.T) {
 	repo := newFakeRepository()
 	repo.lockedSession = repo.session
 	repo.lockedSession.OwnerID = 2
@@ -396,17 +396,17 @@ func TestCreateRequestRecordsDeniedAuditWhenLockedSessionOwnerChanges(t *testing
 		Config:     RuntimeConfig{Enabled: true, Model: "test-model", MaxTokens: 100},
 	})
 
-	_, err := service.CreateRequest(context.Background(), testActor(), "LLM-00000001", CreateRequestInput{
+	created, err := service.CreateRequest(context.Background(), testActor(), "LLM-00000001", CreateRequestInput{
 		Prompt: "Summarize",
 	})
-	if !errors.Is(err, auth.ErrForbidden) {
-		t.Fatalf("CreateRequest error = %v, want forbidden", err)
+	if err != nil {
+		t.Fatalf("CreateRequest error = %v", err)
 	}
-	if len(audits.standalone) != 1 {
-		t.Fatalf("standalone audits = %#v", audits.standalone)
+	if created.OwnerID != 2 {
+		t.Fatalf("created request = %#v, want shared locked session anchor", created)
 	}
-	if audits.standalone[0].Result != audit.ResultDenied || audits.standalone[0].Reason != "not_found" {
-		t.Fatalf("standalone audit = %#v", audits.standalone[0])
+	if len(audits.standalone) != 0 {
+		t.Fatalf("unexpected standalone audits = %#v", audits.standalone)
 	}
 }
 
@@ -465,7 +465,7 @@ func TestDeleteSessionRecordsFailedStandaloneAudit(t *testing.T) {
 }
 
 func testActor() auth.Principal {
-	return auth.Principal{ID: 1, Username: "alice", Role: auth.RoleUser}
+	return auth.Principal{ID: 1, Username: "alice", RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 }
 
 type fakeRepository struct {
@@ -537,7 +537,7 @@ func (r *fakeRepository) DeleteSession(_ context.Context, ownerID int64, session
 func (r *fakeRepository) CreateRequest(_ context.Context, ownerID int64, sessionID int64, input PersistedRequestInput) (Request, error) {
 	now := time.Now()
 	r.createdRequest = Request{
-		ID: 2, OwnerID: ownerID, SessionID: sessionID, ActorUserID: input.ActorUserID,
+		ID: 2, OwnerID: ownerID, SessionID: sessionID, ActorRefCode: input.ActorRefCode,
 		Prompt: input.Prompt, Model: input.Model, MaxTokens: input.MaxTokens,
 		ContextJSON: input.ContextJSON, RequestJSON: input.RequestJSON, ResponseStatus: ResponseStatusQueued,
 		ResponseJSON: json.RawMessage(`{}`), CreatedAt: now, UpdatedAt: now,

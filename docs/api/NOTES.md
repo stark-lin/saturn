@@ -27,7 +27,7 @@ Both types draw from the same global ObjectRef sequence and `object_refs.ref_cod
 
 `migrations/000015_notes_version_objects.sql` upgrades existing Notes: each old current Markdown value becomes v1, existing Note ObjectRefs change from `note` to `nte-obj`, a `version-obj` ObjectRef is registered for each v1, and the logical Note points to it.
 
-Collections, NoteLink, NoteTemplate, NoteSource/RSS ingestion, sharing, content restoration, and status workflows beyond `draft` remain outside this API.
+Collections, NoteLink, NoteTemplate, NoteSource/RSS ingestion, content restoration, and status workflows beyond `draft` remain outside this API. User-to-user sharing is not part of Saturn's single-instance model.
 
 ## 3. Endpoint Inventory
 
@@ -41,7 +41,7 @@ Collections, NoteLink, NoteTemplate, NoteSource/RSS ingestion, sharing, content 
 | `GET` | `/api/notes/{ref_code}/versions` | `Implemented` | List all versions of a logical Note, newest first |
 | `GET` | `/api/notes/versions/by-ref/{ref_code}` | `Implemented` | Independently read one `version-obj` by RefCode |
 
-All endpoints require Bearer JWT authentication and are owner-only. Path values must match `^NTE-[0-9A-F]{8}$`; because the prefix is a module namespace, the service resolves `object_type` and returns `404` when a valid NTE code names the wrong type for that endpoint.
+All endpoints require an administrator JWT or API key. Reads require `data:read`; mutations require `data:write`. Path values must match `^NTE-[0-9A-F]{8}$`; because the prefix is a module namespace, the service resolves `object_type` and returns `404` when a valid NTE code names the wrong type for that endpoint.
 
 ## 4. Representations
 
@@ -65,7 +65,7 @@ All endpoints require Bearer JWT authentication and are owner-only. Path values 
 }
 ```
 
-`ref_code` is the stable `nte-obj` identity until the Note is deleted. `current_version_ref` is independently resolvable and changes whenever content is updated. `version_number` is an owner-local display/order value for this Note and never replaces a RefCode. The logical Note stores no content directly.
+`ref_code` is the stable `nte-obj` identity until the Note is deleted. `current_version_ref` is independently resolvable and changes whenever content is updated. `version_number` is a Note-local display/order value and never replaces a RefCode. The logical Note stores no content directly.
 
 List items omit Markdown but include `ref_code`, `current_version_ref`, `version_number`, title, tags, status, and `updated_at`.
 
@@ -128,11 +128,11 @@ The service claims two distinct `NTE-*` codes, creates the logical Note, registe
 
 `GET /api/notes` supports `text`, `tag`, `limit` (`1..100`, default `20`), and `offset` (`>=0`). Text search uses only the current version. Results sort by logical Note `updated_at` descending, then `nte-obj.ref_code` descending.
 
-All Note and version operations require `owner_id = actor.ID`; superuser does not bypass ownership. Missing, non-owned, deleted, and wrong-object-type resources return `404/not_found`.
+All Note and version operations use shared instance scope. Missing, deleted, and wrong-object-type resources return `404/not_found`; API keys without the required route scope receive `403/insufficient_scope` before the service call.
 
 ## 8. Audit and Errors
 
-Creating or updating content records a CREATE audit for the new `version-obj` and a CREATE or UPDATE audit for the `nte-obj` in the same transaction. Hard deletion records DELETE for every version with reason `cascade_note_delete`, then DELETE for the logical Note. Audit rows never contain content, JWTs, or Authorization headers.
+Creating or updating content records a CREATE audit for the new `version-obj` and a CREATE or UPDATE audit for the `nte-obj` in the same transaction. Hard deletion records DELETE for every version with reason `cascade_note_delete`, then DELETE for the logical Note. Audit rows store the administrator or API-key RefCode and never contain content, credentials, or Authorization headers.
 
 | HTTP | Code | Condition |
 | --- | --- | --- |
@@ -152,5 +152,5 @@ note_versions stores immutable complete snapshots.
 Every content update inserts a new note_versions row and ObjectRef.
 version_number is display/order metadata only.
 Deleting a Note atomically removes its source row, all version rows, and every associated ObjectRef; no content or Note restore endpoint exists.
-Handlers bind transport; services enforce ownership, version rules, projection updates, hard deletion, and audit.
+Handlers bind transport; services enforce scope-sensitive business rules, version rules, projection updates, hard deletion, and audit.
 ```

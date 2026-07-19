@@ -368,7 +368,7 @@ Main modules:
 * Search
 * Operations
 
-The top `Global Search` is the input entry point for Ref IDs; the left `Search` is the query results page, and the content area of the first version only displays owner-only metadata JSON.
+The top `Global Search` is the input entry point for Ref IDs; the left `Search` is the query results page, and the content area of the first version only displays shared instance metadata JSON.
 
 Reason:
 
@@ -422,7 +422,7 @@ Location: The top banner provides an input box, and the Control Rack provides a 
 
 Capabilities:
 
-* Exact query of the owner's own metadata by `ref_code`
+* Exact query of shared instance metadata by `ref_code`
 * JSON viewer responses contain the same object's `title`, `tags`, and `status`; `tags` for tagless objects is `[]`
 * Supports `NTE` / `FIL` / `ACC` / `CAL` / `LLM` module prefixes
 * The results page displays the API response in the mutable content area as a JSON viewer
@@ -470,7 +470,7 @@ Key components:
 * Template Picker
 * Linked References Panel
 
-The current Notes page in `web/src` uses the owner-only `/api/notes` logical Note API: list/detail show the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. The editor's `HISTORY` mode loads the current Note's version summaries and lets the user click a version to read its immutable content through the version RefCode endpoint without replacing the current draft. Delete permanently removes the logical Note, its complete version history, and all associated ObjectRefs; neither the UI nor API provides content restoration. Collections, templates, associations, and RSS remain future UI capabilities.
+The current Notes page in `web/src` uses the shared instance `/api/notes` logical Note API: list/detail show the current Markdown snapshot, while every save creates an immutable `version-obj` and advances the stable `nte-obj` current pointer. The editor's `HISTORY` mode loads the current Note's version summaries and lets the user click a version to read its immutable content through the version RefCode endpoint without replacing the current draft. Delete permanently removes the logical Note, its complete version history, and all associated ObjectRefs; neither the UI nor API provides content restoration. Collections, templates, associations, and RSS remain future UI capabilities.
 
 ### 6.4 Accounting
 

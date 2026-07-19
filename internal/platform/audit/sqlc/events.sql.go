@@ -14,8 +14,7 @@ import (
 const insertAuditLog = `-- name: InsertAuditLog :one
 
 INSERT INTO audit_logs (
-    actor_type,
-    actor_user_id,
+    actor_ref_code,
     action,
     target_ref_code,
     result,
@@ -24,23 +23,21 @@ INSERT INTO audit_logs (
     user_agent
 )
 VALUES (
-    $1::text::audit_actor_type,
-    $2,
-    $3::text::audit_action,
-    $4,
-    $5::text::audit_result,
-    $6,
-    $7::text::inet,
-    $8
+    $1,
+    $2::text::audit_action,
+    $3,
+    $4::text::audit_result,
+    $5,
+    $6::text::inet,
+    $7
 )
-RETURNING id, actor_type::text AS actor_type, actor_user_id, action::text AS action,
-          target_ref_code, result::text AS result, reason, source_ip::text AS source_ip,
+RETURNING id, actor_ref_code, action::text AS action, target_ref_code,
+          result::text AS result, reason, source_ip::text AS source_ip,
           user_agent, created_at
 `
 
 type InsertAuditLogParams struct {
-	ActorType     string
-	ActorUserID   sql.NullInt64
+	ActorRefCode  string
 	Action        string
 	TargetRefCode string
 	Result        string
@@ -51,8 +48,7 @@ type InsertAuditLogParams struct {
 
 type InsertAuditLogRow struct {
 	ID            int64
-	ActorType     string
-	ActorUserID   sql.NullInt64
+	ActorRefCode  string
 	Action        string
 	TargetRefCode string
 	Result        string
@@ -65,8 +61,7 @@ type InsertAuditLogRow struct {
 // This file defines append-only audit log query templates for sqlc generation.
 //
 //	INSERT INTO audit_logs (
-//	    actor_type,
-//	    actor_user_id,
+//	    actor_ref_code,
 //	    action,
 //	    target_ref_code,
 //	    result,
@@ -75,22 +70,20 @@ type InsertAuditLogRow struct {
 //	    user_agent
 //	)
 //	VALUES (
-//	    $1::text::audit_actor_type,
-//	    $2,
-//	    $3::text::audit_action,
-//	    $4,
-//	    $5::text::audit_result,
-//	    $6,
-//	    $7::text::inet,
-//	    $8
+//	    $1,
+//	    $2::text::audit_action,
+//	    $3,
+//	    $4::text::audit_result,
+//	    $5,
+//	    $6::text::inet,
+//	    $7
 //	)
-//	RETURNING id, actor_type::text AS actor_type, actor_user_id, action::text AS action,
-//	          target_ref_code, result::text AS result, reason, source_ip::text AS source_ip,
+//	RETURNING id, actor_ref_code, action::text AS action, target_ref_code,
+//	          result::text AS result, reason, source_ip::text AS source_ip,
 //	          user_agent, created_at
 func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (InsertAuditLogRow, error) {
 	row := q.db.QueryRowContext(ctx, insertAuditLog,
-		arg.ActorType,
-		arg.ActorUserID,
+		arg.ActorRefCode,
 		arg.Action,
 		arg.TargetRefCode,
 		arg.Result,
@@ -101,8 +94,7 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 	var i InsertAuditLogRow
 	err := row.Scan(
 		&i.ID,
-		&i.ActorType,
-		&i.ActorUserID,
+		&i.ActorRefCode,
 		&i.Action,
 		&i.TargetRefCode,
 		&i.Result,
@@ -115,12 +107,12 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 }
 
 const listAuditLogs = `-- name: ListAuditLogs :many
-SELECT id, actor_type::text AS actor_type, actor_user_id, action::text AS action,
-       target_ref_code, result::text AS result, reason, source_ip::text AS source_ip,
+SELECT id, actor_ref_code, action::text AS action, target_ref_code,
+       result::text AS result, reason, source_ip::text AS source_ip,
        user_agent, created_at
 FROM audit_logs
 WHERE ($1::text = '' OR target_ref_code = $1)
-  AND ($2::bigint = 0 OR actor_user_id = $2)
+  AND ($2::text = '' OR actor_ref_code = $2)
   AND ($3::text = '' OR action::text = $3)
   AND ($4::text = '' OR result::text = $4)
 ORDER BY created_at DESC, id DESC
@@ -129,7 +121,7 @@ LIMIT $6 OFFSET $5
 
 type ListAuditLogsParams struct {
 	TargetRefCode string
-	ActorUserID   int64
+	ActorRefCode  string
 	Action        string
 	Result        string
 	PageOffset    int32
@@ -138,8 +130,7 @@ type ListAuditLogsParams struct {
 
 type ListAuditLogsRow struct {
 	ID            int64
-	ActorType     string
-	ActorUserID   sql.NullInt64
+	ActorRefCode  string
 	Action        string
 	TargetRefCode string
 	Result        string
@@ -151,12 +142,12 @@ type ListAuditLogsRow struct {
 
 // ListAuditLogs
 //
-//	SELECT id, actor_type::text AS actor_type, actor_user_id, action::text AS action,
-//	       target_ref_code, result::text AS result, reason, source_ip::text AS source_ip,
+//	SELECT id, actor_ref_code, action::text AS action, target_ref_code,
+//	       result::text AS result, reason, source_ip::text AS source_ip,
 //	       user_agent, created_at
 //	FROM audit_logs
 //	WHERE ($1::text = '' OR target_ref_code = $1)
-//	  AND ($2::bigint = 0 OR actor_user_id = $2)
+//	  AND ($2::text = '' OR actor_ref_code = $2)
 //	  AND ($3::text = '' OR action::text = $3)
 //	  AND ($4::text = '' OR result::text = $4)
 //	ORDER BY created_at DESC, id DESC
@@ -164,7 +155,7 @@ type ListAuditLogsRow struct {
 func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]ListAuditLogsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditLogs,
 		arg.TargetRefCode,
-		arg.ActorUserID,
+		arg.ActorRefCode,
 		arg.Action,
 		arg.Result,
 		arg.PageOffset,
@@ -179,8 +170,7 @@ func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([
 		var i ListAuditLogsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ActorType,
-			&i.ActorUserID,
+			&i.ActorRefCode,
 			&i.Action,
 			&i.TargetRefCode,
 			&i.Result,

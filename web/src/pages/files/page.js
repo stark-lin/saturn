@@ -389,7 +389,7 @@ export function renderFilesPage(target) {
     const bytes = state.allFiles.reduce((total, file) => total + Number(file.size_bytes ?? 0), 0);
     totalCollections.value.textContent = String(state.collections.length);
     totalCollections.visual.replaceChildren();
-    totalCollections.note.textContent = "Owner-only file collections.";
+    totalCollections.note.textContent = "File collections shared across this Saturn instance.";
     totalFiles.value.textContent = String(state.allFiles.length);
     totalFiles.visual.replaceChildren();
     totalFiles.note.textContent = "Immutable file records across all collections.";

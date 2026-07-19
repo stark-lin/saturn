@@ -220,12 +220,11 @@ If a write operation fails or is rejected within the transaction, no SUCCESS aud
 
 ## 8. Permissions and Errors
 
-All endpoints require a Bearer JWT. Resource authorization is executed in the Accounting service, and the repo only applies fixed scope queries:
+All endpoints require an administrator JWT or API key. Reads require `data:read`; mutations require `data:write`. The repository applies the shared instance scope:
 
 ```text
-user:      Can only list, read, and write Accounts / Transactions they own.
-superuser: Can list, read, create transactions for, void, or delete existing Accounts / Transactions of any owner;
-           can also create Accounts, but newly created Accounts always belong to the actor creating them.
+administrator: all Accounting operations
+API key: operations allowed by data:read/data:write
 ```
 
 Inaccessible resources and non-existent resources both manifest externally as:

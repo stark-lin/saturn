@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const listNotesForOwner = `-- name: ListNotesForOwner :many
+const listNotesAll = `-- name: ListNotesAll :many
 
 SELECT n.id, n.owner_id, object_ref.ref_code, version_ref.ref_code AS current_version_ref,
        version.version_number, version.title, object_ref.status
@@ -23,18 +23,16 @@ JOIN object_refs AS version_ref
   ON version_ref.owner_id = n.owner_id
  AND version_ref.object_type = 'version-obj'
  AND version_ref.object_id = version.id
-WHERE n.owner_id = $1
 ORDER BY n.id DESC
-LIMIT $2 OFFSET $3
+LIMIT $1 OFFSET $2
 `
 
-type ListNotesForOwnerParams struct {
-	OwnerID int64
-	Limit   int32
-	Offset  int32
+type ListNotesAllParams struct {
+	Limit  int32
+	Offset int32
 }
 
-type ListNotesForOwnerRow struct {
+type ListNotesAllRow struct {
 	ID                int64
 	OwnerID           int64
 	RefCode           string
@@ -58,18 +56,17 @@ type ListNotesForOwnerRow struct {
 //	  ON version_ref.owner_id = n.owner_id
 //	 AND version_ref.object_type = 'version-obj'
 //	 AND version_ref.object_id = version.id
-//	WHERE n.owner_id = $1
 //	ORDER BY n.id DESC
-//	LIMIT $2 OFFSET $3
-func (q *Queries) ListNotesForOwner(ctx context.Context, arg ListNotesForOwnerParams) ([]ListNotesForOwnerRow, error) {
-	rows, err := q.db.QueryContext(ctx, listNotesForOwner, arg.OwnerID, arg.Limit, arg.Offset)
+//	LIMIT $1 OFFSET $2
+func (q *Queries) ListNotesAll(ctx context.Context, arg ListNotesAllParams) ([]ListNotesAllRow, error) {
+	rows, err := q.db.QueryContext(ctx, listNotesAll, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListNotesForOwnerRow
+	var items []ListNotesAllRow
 	for rows.Next() {
-		var i ListNotesForOwnerRow
+		var i ListNotesAllRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,

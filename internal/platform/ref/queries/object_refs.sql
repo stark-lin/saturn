@@ -21,12 +21,11 @@ SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, crea
 FROM object_refs
 WHERE ref_code = $1;
 
--- name: ListRecentObjectRefsByOwner :many
+-- name: ListRecentObjectRefs :many
 SELECT id, owner_id, ref_code, object_type, object_id, title, tags, status, created_at, updated_at
 FROM object_refs
-WHERE owner_id = $1
 ORDER BY updated_at DESC, ref_code DESC
-LIMIT $2;
+LIMIT $1;
 
 -- name: UpdateObjectRefProjection :one
 UPDATE object_refs

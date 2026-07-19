@@ -1,4 +1,4 @@
-// This file renders the owner-only Notes API workflow and safe Markdown preview.
+// This file renders the shared-instance Notes API workflow and safe Markdown preview.
 import { deleteJSON, getJSON, patchJSON, postJSON } from "../../shared/api/client.js";
 import { renderButton, renderNotice, renderStatusBadge, renderSurface, renderTag } from "../../shared/components/primitives.js";
 import { el } from "../../shared/utils/dom.js";

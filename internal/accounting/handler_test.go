@@ -228,5 +228,5 @@ func (s *fakeLedgerService) VoidTransaction(_ context.Context, _ auth.Principal,
 
 func authenticatedAccountingRequest(method string, target string, body string) *http.Request {
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }

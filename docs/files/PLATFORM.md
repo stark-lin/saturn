@@ -73,7 +73,7 @@ Responsibilities:
 
 ```text
 append-only audit event recording
-superuser-only audit event querying
+administrator-only audit event querying by actor RefCode
 critical operation audit format conventions
 ```
 
@@ -118,15 +118,16 @@ internal/platform/auth
 Responsibilities:
 
 ```text
-User model
-Login and logout
+Singleton administrator model
+Administrator login and logout
+Named API key creation, listing, expiry, authentication, and revocation
 Password hashing and verification
 JWT issuance and verification
-session creation, reading, and revocation
+Administrator session creation, reading, and revocation
 Current Principal injection and reading
 Route-level authentication middleware
-Role, action, resource facts, and authorization judgments
-List / search scope generation
+Credential scope, action, resource facts, and authorization judgments
+Shared instance list / search scope generation
 ```
 
 Rules:
@@ -136,7 +137,7 @@ auth can depend on db, clock, config, and Redis-backed session capabilities
 auth does not depend on any business modules
 auth does not generate business SQL
 auth does not know the table structures of accounting, notes, files, calendar
-auth's own user authentication persistence queries can be implemented via this package's queries/ and sqlc/
+auth's own administrator and API key persistence queries can be implemented via this package's queries/ and sqlc/
 auth's generation config must not output models unused by other business modules
 Resource-level authorization is completed by business services calling the auth authorizer
 List / search authorization is generated as scopes by auth, and business repos are responsible for implementing it into this module's SQL
@@ -146,7 +147,7 @@ Authorization division:
 
 ```text
 middleware:
-  Responsible for route-level entry control like RequireLogin, RequireRole
+  Responsible for route-level authentication and API key scope entry control
 
 handler:
   Responsible for parameter binding, reading Principal, calling service
@@ -168,9 +169,8 @@ repo:
 
 ```go
 type Scope struct {
-    All           bool
-    OwnerID       int64
-    IncludeShared bool
+    All     bool
+    OwnerID int64
 }
 ```
 
@@ -303,7 +303,7 @@ Generate unified readable ref codes
 Register references for important business objects
 Resolve ref codes to object types and internal ids
 Validate ref code formats
-Maintain title/status metadata projections and provide owner-only metadata querying
+Maintain title/status metadata projections and provide shared instance metadata querying
 Support search results, cross-module associations, and LLM references
 ```
 
@@ -319,7 +319,7 @@ Permission judgments are still executed by business services and platform/auth
 object_refs is the authoritative source for ref_code and title/tags/status metadata projections; source business tables do not duplicate saving ref_code
 Module prefixes are fixed to NTE / FIL / ACC / CAL / LLM; objects of the same module are differentiated by object_type
 Code suffixes are generated as 8-character uppercase Hex by a global PostgreSQL sequence; numbers are not reused
-GET /api/platform/search?ref_code=<code> only returns metadata JSON containing title/tags/status to the owner
+GET /api/platform/search?ref_code=<code> returns shared instance metadata JSON containing title/tags/status
 ```
 
 For detailed concepts, see [../OBJECT_REF_CODE.md](../OBJECT_REF_CODE.md).
@@ -338,7 +338,7 @@ Responsibilities:
 ```text
 Maintain object tag projections based on object_refs
 Provide business modules with the ability to register or update current object tag sets
-Provide tags sets for owner-only ObjectRef metadata responses
+Provide tag sets for shared instance ObjectRef metadata responses
 ```
 
 Rules:
@@ -360,7 +360,7 @@ internal/platform/search
 Responsibilities:
 
 ```text
-Owner-only ObjectRef metadata endpoint
+Shared instance ObjectRef metadata endpoint
 ObjectRef JSON search endpoint
 Recent objects endpoint
 Compatibility ref_code metadata endpoint

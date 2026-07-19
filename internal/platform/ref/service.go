@@ -16,11 +16,12 @@ var (
 )
 
 type Service struct {
-	repo Repository
+	repo       Repository
+	authorizer *auth.Authorizer
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{repo: repo, authorizer: auth.NewAuthorizer()}
 }
 
 func (s *Service) Register(ctx context.Context, registration Registration) (ObjectRef, error) {
@@ -84,8 +85,8 @@ func (s *Service) Delete(ctx context.Context, ownerID int64, objectType ObjectTy
 }
 
 func (s *Service) ResolveMetadata(ctx context.Context, actor auth.Principal, code string) (Metadata, error) {
-	if actor.IsZero() {
-		return Metadata{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "object_ref"}); err != nil {
+		return Metadata{}, err
 	}
 	object, err := s.Resolve(ctx, code)
 	if err != nil {
@@ -94,20 +95,17 @@ func (s *Service) ResolveMetadata(ctx context.Context, actor auth.Principal, cod
 	if !CodeMatchesObjectType(object.RefCode, object.ObjectType) {
 		return Metadata{}, ErrInvalidObjectRef
 	}
-	if actor.ID != object.OwnerID {
-		return Metadata{}, ErrNotFound
-	}
 	return metadataFromObjectRef(object)
 }
 
 func (s *Service) ListRecentMetadata(ctx context.Context, actor auth.Principal, limit int) ([]Metadata, error) {
-	if actor.IsZero() {
-		return nil, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "object_ref"}); err != nil {
+		return nil, err
 	}
 	if limit < 1 || limit > MaxRecentMetadataLimit {
 		return nil, ErrInvalidRecentMetadataLimit
 	}
-	objects, err := s.repo.ListRecentByOwner(ctx, actor.ID, limit)
+	objects, err := s.repo.ListRecent(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +121,8 @@ func (s *Service) ListRecentMetadata(ctx context.Context, actor auth.Principal, 
 }
 
 func (s *Service) SearchMetadata(ctx context.Context, actor auth.Principal, query MetadataSearchQuery) ([]Metadata, error) {
-	if actor.IsZero() {
-		return nil, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "object_ref"}); err != nil {
+		return nil, err
 	}
 	query, emptyResult, err := normalizeMetadataSearchQuery(query)
 	if err != nil {
@@ -133,7 +131,7 @@ func (s *Service) SearchMetadata(ctx context.Context, actor auth.Principal, quer
 	if emptyResult {
 		return []Metadata{}, nil
 	}
-	objects, err := s.repo.SearchByOwner(ctx, actor.ID, query)
+	objects, err := s.repo.Search(ctx, query)
 	if err != nil {
 		return nil, err
 	}

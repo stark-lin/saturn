@@ -13,7 +13,7 @@ import (
 )
 
 const listRequestsForSession = `-- name: ListRequestsForSession :many
-SELECT request.id, request.owner_id, request.session_id, request_ref.id AS object_ref_id,
+SELECT request.id, request.owner_id, request.session_id, request.actor_ref_code, request_ref.id AS object_ref_id,
        request_ref.ref_code, request.prompt, request.model, request.max_tokens,
        request.context_json, request.request_json, request.response_status,
        request.content, request.error_code, request.error_message, request.response_json,
@@ -23,14 +23,12 @@ JOIN object_refs AS request_ref
   ON request_ref.owner_id = request.owner_id
  AND request_ref.object_type = 'llm_request'
  AND request_ref.object_id = request.id
-WHERE request.owner_id = $1
-  AND request.session_id = $2
+WHERE request.session_id = $1
 ORDER BY request.created_at ASC, request.id ASC
-LIMIT $3 OFFSET $4
+LIMIT $2 OFFSET $3
 `
 
 type ListRequestsForSessionParams struct {
-	OwnerID   int64
 	SessionID int64
 	Limit     int32
 	Offset    int32
@@ -40,6 +38,7 @@ type ListRequestsForSessionRow struct {
 	ID             int64
 	OwnerID        int64
 	SessionID      int64
+	ActorRefCode   string
 	ObjectRefID    int64
 	RefCode        string
 	Prompt         string
@@ -59,7 +58,7 @@ type ListRequestsForSessionRow struct {
 
 // ListRequestsForSession
 //
-//	SELECT request.id, request.owner_id, request.session_id, request_ref.id AS object_ref_id,
+//	SELECT request.id, request.owner_id, request.session_id, request.actor_ref_code, request_ref.id AS object_ref_id,
 //	       request_ref.ref_code, request.prompt, request.model, request.max_tokens,
 //	       request.context_json, request.request_json, request.response_status,
 //	       request.content, request.error_code, request.error_message, request.response_json,
@@ -69,17 +68,11 @@ type ListRequestsForSessionRow struct {
 //	  ON request_ref.owner_id = request.owner_id
 //	 AND request_ref.object_type = 'llm_request'
 //	 AND request_ref.object_id = request.id
-//	WHERE request.owner_id = $1
-//	  AND request.session_id = $2
+//	WHERE request.session_id = $1
 //	ORDER BY request.created_at ASC, request.id ASC
-//	LIMIT $3 OFFSET $4
+//	LIMIT $2 OFFSET $3
 func (q *Queries) ListRequestsForSession(ctx context.Context, arg ListRequestsForSessionParams) ([]ListRequestsForSessionRow, error) {
-	rows, err := q.db.QueryContext(ctx, listRequestsForSession,
-		arg.OwnerID,
-		arg.SessionID,
-		arg.Limit,
-		arg.Offset,
-	)
+	rows, err := q.db.QueryContext(ctx, listRequestsForSession, arg.SessionID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +84,7 @@ func (q *Queries) ListRequestsForSession(ctx context.Context, arg ListRequestsFo
 			&i.ID,
 			&i.OwnerID,
 			&i.SessionID,
+			&i.ActorRefCode,
 			&i.ObjectRefID,
 			&i.RefCode,
 			&i.Prompt,
@@ -120,7 +114,7 @@ func (q *Queries) ListRequestsForSession(ctx context.Context, arg ListRequestsFo
 	return items, nil
 }
 
-const listSessionsByOwner = `-- name: ListSessionsByOwner :many
+const listSessionsAll = `-- name: ListSessionsAll :many
 
 SELECT s.id, s.owner_id, session_ref.id AS object_ref_id, session_ref.ref_code,
        s.title, s.status, s.created_at, s.updated_at
@@ -129,18 +123,16 @@ JOIN object_refs AS session_ref
   ON session_ref.owner_id = s.owner_id
  AND session_ref.object_type = 'llm_session'
  AND session_ref.object_id = s.id
-WHERE s.owner_id = $1
 ORDER BY s.created_at DESC, s.id DESC
-LIMIT $2 OFFSET $3
+LIMIT $1 OFFSET $2
 `
 
-type ListSessionsByOwnerParams struct {
-	OwnerID int64
-	Limit   int32
-	Offset  int32
+type ListSessionsAllParams struct {
+	Limit  int32
+	Offset int32
 }
 
-type ListSessionsByOwnerRow struct {
+type ListSessionsAllRow struct {
 	ID          int64
 	OwnerID     int64
 	ObjectRefID int64
@@ -160,18 +152,17 @@ type ListSessionsByOwnerRow struct {
 //	  ON session_ref.owner_id = s.owner_id
 //	 AND session_ref.object_type = 'llm_session'
 //	 AND session_ref.object_id = s.id
-//	WHERE s.owner_id = $1
 //	ORDER BY s.created_at DESC, s.id DESC
-//	LIMIT $2 OFFSET $3
-func (q *Queries) ListSessionsByOwner(ctx context.Context, arg ListSessionsByOwnerParams) ([]ListSessionsByOwnerRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionsByOwner, arg.OwnerID, arg.Limit, arg.Offset)
+//	LIMIT $1 OFFSET $2
+func (q *Queries) ListSessionsAll(ctx context.Context, arg ListSessionsAllParams) ([]ListSessionsAllRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionsAll, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSessionsByOwnerRow
+	var items []ListSessionsAllRow
 	for rows.Next() {
-		var i ListSessionsByOwnerRow
+		var i ListSessionsAllRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,

@@ -72,8 +72,8 @@ func NewService(
 }
 
 func (s *Service) ListCollections(ctx context.Context, actor auth.Principal, query CollectionQuery) (CollectionPage, error) {
-	if actor.IsZero() {
-		return CollectionPage{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "file_collection", 0, 0); err != nil {
+		return CollectionPage{}, err
 	}
 	if s.repo == nil {
 		return CollectionPage{}, ErrRepositoryUnavailable
@@ -86,8 +86,8 @@ func (s *Service) ListCollections(ctx context.Context, actor auth.Principal, que
 }
 
 func (s *Service) CreateCollection(ctx context.Context, actor auth.Principal, input CreateCollectionInput) (Collection, error) {
-	if actor.IsZero() {
-		return Collection{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionCreate, "file_collection", 0, 0); err != nil {
+		return Collection{}, err
 	}
 	input, err := normalizeCollectionInput(input)
 	if err != nil {
@@ -114,7 +114,7 @@ func (s *Service) CreateCollection(ctx context.Context, actor auth.Principal, in
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: object.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -133,8 +133,8 @@ func (s *Service) CreateCollection(ctx context.Context, actor auth.Principal, in
 }
 
 func (s *Service) GetCollection(ctx context.Context, actor auth.Principal, refCode string) (Collection, error) {
-	if actor.IsZero() {
-		return Collection{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "file_collection", 0, 0); err != nil {
+		return Collection{}, err
 	}
 	if s.repo == nil {
 		return Collection{}, ErrRepositoryUnavailable
@@ -143,8 +143,8 @@ func (s *Service) GetCollection(ctx context.Context, actor auth.Principal, refCo
 }
 
 func (s *Service) DeleteCollection(ctx context.Context, actor auth.Principal, refCode string) error {
-	if actor.IsZero() {
-		return auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionDelete, "file_collection", 0, 0); err != nil {
+		return err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return err
@@ -171,7 +171,7 @@ func (s *Service) DeleteCollection(ctx context.Context, actor auth.Principal, re
 			objectKeys = append(objectKeys, objectKey)
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 			TargetRefCode: collection.RefCode, Result: audit.ResultSuccess, Reason: string(DeleteReasonCollectionDelete),
 		}); err != nil {
 			return err
@@ -188,8 +188,8 @@ func (s *Service) DeleteCollection(ctx context.Context, actor auth.Principal, re
 }
 
 func (s *Service) ListFiles(ctx context.Context, actor auth.Principal, query FileQuery) (FilePage, error) {
-	if actor.IsZero() {
-		return FilePage{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "file", 0, 0); err != nil {
+		return FilePage{}, err
 	}
 	if s.repo == nil {
 		return FilePage{}, ErrRepositoryUnavailable
@@ -202,8 +202,8 @@ func (s *Service) ListFiles(ctx context.Context, actor auth.Principal, query Fil
 }
 
 func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input CreateFileInput) (File, error) {
-	if actor.IsZero() {
-		return File{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionCreate, "file", 0, 0); err != nil {
+		return File{}, err
 	}
 	input, err := normalizeFileInput(input)
 	if err != nil {
@@ -266,7 +266,7 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: objectRef.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -287,8 +287,8 @@ func (s *Service) CreateFile(ctx context.Context, actor auth.Principal, input Cr
 }
 
 func (s *Service) GetFile(ctx context.Context, actor auth.Principal, refCode string) (File, error) {
-	if actor.IsZero() {
-		return File{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "file", 0, 0); err != nil {
+		return File{}, err
 	}
 	if s.repo == nil {
 		return File{}, ErrRepositoryUnavailable
@@ -297,8 +297,8 @@ func (s *Service) GetFile(ctx context.Context, actor auth.Principal, refCode str
 }
 
 func (s *Service) DeleteFile(ctx context.Context, actor auth.Principal, refCode string) error {
-	if actor.IsZero() {
-		return auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionDelete, "file", 0, 0); err != nil {
+		return err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return err
@@ -323,8 +323,8 @@ func (s *Service) DeleteFile(ctx context.Context, actor auth.Principal, refCode 
 }
 
 func (s *Service) OpenVerifiedDownload(ctx context.Context, actor auth.Principal, refCode string) (VerifiedDownload, error) {
-	if actor.IsZero() {
-		return VerifiedDownload{}, auth.ErrUnauthenticated
+	if err := s.can(actor, auth.ActionRead, "file", 0, 0); err != nil {
+		return VerifiedDownload{}, err
 	}
 	if s.repo == nil {
 		return VerifiedDownload{}, ErrRepositoryUnavailable
@@ -372,7 +372,7 @@ func (s *Service) deleteFileByID(ctx context.Context, actor auth.Principal, owne
 
 func (s *Service) deleteLockedFile(ctx context.Context, actor auth.Principal, file File, reason DeleteReason) (string, error) {
 	if _, err := s.audit.Record(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+		ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 		TargetRefCode: file.RefCode, Result: audit.ResultSuccess, Reason: string(reason),
 	}); err != nil {
 		return "", err
@@ -460,7 +460,7 @@ func (s *Service) recordWriteFailure(ctx context.Context, actor auth.Principal, 
 		return operationErr
 	}
 	auditErr := s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: action,
+		ActorRefCode: actor.ActorRefCode(), Action: action,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 	if auditErr != nil {
@@ -475,8 +475,7 @@ func (s *Service) recordDownloadIntegrityFailure(ctx context.Context, actor auth
 
 func (s *Service) recordDownloadAudit(ctx context.Context, actor auth.Principal, refCode string, result audit.Result, reason string) error {
 	return s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType:     audit.ActorTypeUser,
-		ActorUserID:   actor.ID,
+		ActorRefCode:  actor.ActorRefCode(),
 		Action:        audit.ActionExport,
 		TargetRefCode: refCode,
 		Result:        result,

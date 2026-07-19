@@ -13,6 +13,7 @@ The current baseline contains at least the following table groupings:
 ```text
 identity:
   users
+  api_keys
 
 audit:
   audit_logs
@@ -76,16 +77,27 @@ The diagram below expresses the complete domain target structure, including futu
 erDiagram
   users {
     bigint id PK
+    text ref_code UK "USR-00000001"
     text username UK
     text email UK "nullable"
-    text role
     text password_hash
+  }
+
+  api_keys {
+    text ref_code PK
+    text name UK
+    text key_prefix
+    text key_hash UK
+    text_array scopes
+    timestamptz created_at
+    timestamptz last_used_at "nullable"
+    timestamptz expires_at "nullable"
+    timestamptz revoked_at "nullable"
   }
 
   audit_logs {
     bigint id PK
-    audit_actor_type actor_type
-    bigint actor_user_id "nullable"
+    text actor_ref_code
     audit_action action
     text target_ref_code
     audit_result result
@@ -236,29 +248,29 @@ erDiagram
     timestamptz updated_at
   }
 
-  users ||--o{ object_refs : owns
+  users ||--o{ object_refs : instance_anchor
 
-  users ||--o{ file_collections : owns
+  users ||--o{ file_collections : instance_anchor
   file_collections ||--o{ files : contains
-  users ||--o{ files : owns
+  users ||--o{ files : instance_anchor
 
-  users ||--o{ notes : owns
+  users ||--o{ notes : instance_anchor
   notes ||--|{ note_versions : immutable_versions
-  users ||--o{ note_collections : owns
+  users ||--o{ note_collections : instance_anchor
   note_collections ||--o{ note_collection_items : items
   notes ||--o{ note_collection_items : collected_note
   notes ||--o{ note_links : source
   notes ||--o{ note_links : target
-  users ||--o{ note_templates : owns
-  users ||--o{ note_sources : owns
+  users ||--o{ note_templates : instance_anchor
+  users ||--o{ note_sources : instance_anchor
   note_sources ||--o{ rss_sources : rss_config
 
-  users ||--o{ accounts : owns
-  users ||--o{ transactions : owns
+  users ||--o{ accounts : instance_anchor
+  users ||--o{ transactions : instance_anchor
   accounts ||--o{ transactions : ledger_entries
 
-  users ||--o{ event_aggregates : owns
-  users ||--o{ events : owns
+  users ||--o{ event_aggregates : instance_anchor
+  users ||--o{ events : instance_anchor
   event_aggregates ||--o{ events : child_events
 ```
 
@@ -266,10 +278,10 @@ Explanation:
 
 | Grouping | Relationship Explanation |
 | --- | --- |
-| Identity / Audit | `users` is the main source of actors and owners; `users.username` is the unique login identifier, `users.email` can be null; `users.role` distinguishes `superuser` / `user` for permission isolation; `users.password_hash` only stores bcrypt password hashes, not plaintext passwords. JWT is the authentication bearer token, generated after password verification during login; middleware verifies the signature and checks the Redis session before injecting the Principal; the JWT itself is not persisted as a business resource relationship. `audit_logs` use `actor_type`, a nullable historical `actor_user_id`, and a non-nullable `target_ref_code`, but do not associate with users or business objects via foreign keys, ensuring audit evidence is retained even after objects are deleted. `SYS-00000000` only denotes system-level targets like logins and logouts. `READ` is only used for reads initiated by LLMs. The audit table rejects `UPDATE`, `DELETE`, and `TRUNCATE` via database triggers; it can only be inserted into and queried at runtime. |
+| Identity / Audit | `users` permits only the fixed `USR-00000001` row and stores its unique login name, optional email, and bcrypt password hash; there is no role column. `api_keys` stores immutable unique names, stable `KEY-*` RefCodes, display prefixes, SHA-256 digests, scopes, usage/expiry/revocation timestamps, and never plaintext secrets. Administrator JWTs use Redis session IDs; API keys authenticate directly from their digest. `audit_logs.actor_ref_code` stores only `USR-00000001`, `KEY-*`, or `SYS-00000000`, with no foreign key so historical evidence survives key revocation. The audit table rejects `UPDATE`, `DELETE`, and `TRUNCATE`. |
 | ObjectRef | `object_refs` is the globally unified object registry and the authoritative source for `ref_code` and cross-module `title`, `tags`, and current `status` projections. `object_refs.id` is the cross-module universal object ID; `ref_code` is the stable, readable reference code for users, search, and LLMs; `object_type/object_id` map to the source business table. The business source and state transition rules of title/tag/status are still the responsibility of the source business module; business reads must still return to the source module's service / facade. |
 | Files | `file_collections` are similar to Accounting ledgers and own multiple immutable `files`. Both Collection and File are registered as `FIL-*` ObjectRefs, using the `file_collection` and `file` object_type respectively. File blobs point to `./objects/{FILE_REFCODE}/blob` in the local FS via `object_key`, and must be verified before downloading using the `sha256` and `blake3` in the metadata. When a Collection is deleted, the service cascades through the unified File delete process one by one and records the cascade reason. |
-| Notes | `notes` is the mutable `nte-obj` source: stable owner identity, current-version pointer, and timestamps; it stores no title/body. The legacy `deleted_at` column remains in the historical schema but is unused by runtime behavior. `note_versions` contains immutable full snapshots and parent/version ordering metadata. Both tables map to independent `NTE-*` ObjectRefs through `nte-obj` and `version-obj`. Content updates insert a new version and advance the pointer; content restoration is not exposed. Deleting a Note permanently removes the source row, all snapshots, and all associated ObjectRefs in one transaction. Collections and links remain outside the current API. |
+| Notes | `notes` is the mutable `nte-obj` source: singleton instance anchor, current-version pointer, and timestamps; it stores no title/body. The legacy `deleted_at` column remains in the historical schema but is unused by runtime behavior. `note_versions` contains immutable full snapshots and parent/version ordering metadata. Both tables map to independent `NTE-*` ObjectRefs through `nte-obj` and `version-obj`. Content updates insert a new version and advance the pointer; content restoration is not exposed. Deleting a Note permanently removes the source row, all snapshots, and all associated ObjectRefs in one transaction. Collections and links remain outside the current API. |
 | Accounting | `accounts` are ledgers, and `transactions` are directly subordinated immutable entries. Both Account and Transaction are registered as `ACC-*` objects and project their tags to ObjectRef; a Transaction only allows `posted -> voided`, and single entries cannot be deleted. When deleting an Account, transactions are cascade-deleted following ledger deletion semantics, while the service cleans up corresponding object refs in the same transaction. `accounts.balance_cents` is a cache recalculated only from posted entries, and balance-related writes lock the account row first. |
 | Calendar | `event_aggregates` are event aggregates and can be created empty; `events` are specific schedule instances that must belong to an aggregate and can only be created via the parent aggregate scope. Both EventAggregate and Event are registered as `CAL-*` ObjectRefs and each project their tags to ObjectRef. Their metadata is immutable after creation; Event stores `starts_at` and `ends_at`, requires `ends_at > starts_at`, and its status only allows `scheduled -> finished`, `scheduled -> voided`, and `finished -> voided`. JSON recurrence supports `none`, `week`, `month`, and `year`; repeating kinds generate the requested total count and copy the template end clock and calendar-day offset onto each event. Month/year recurrence clamps missing calendar dates to the target month end while calculating each instance from the original template. Synchronous ICS import separately expands a bounded RFC recurrence set, RDATE / EXDATE, and RECURRENCE-ID overrides into `1..512` concrete Events, then creates the aggregate, Events, ObjectRefs, and audits atomically without retaining the source file. The main CalendarView only returns scheduled events; aggregate details return all child events including finished / voided ones. Deletions are only allowed at the EventAggregate level, and the service cascades cleanup of child events and object refs, writing a DELETE audit for each cascaded deleted event. |
 
@@ -281,10 +293,22 @@ Explanation:
 erDiagram
   users {
     bigint id PK
+    text ref_code UK "USR-00000001"
     text username UK
     text email UK "nullable"
-    text role
     text password_hash
+  }
+
+  api_keys {
+    text ref_code PK
+    text name UK
+    text key_prefix
+    text key_hash UK
+    text_array scopes
+    timestamptz created_at
+    timestamptz last_used_at
+    timestamptz expires_at
+    timestamptz revoked_at
   }
 
   object_refs {
@@ -347,7 +371,7 @@ erDiagram
     bigint id PK
     bigint owner_id FK
     bigint session_id FK
-    bigint actor_user_id FK
+    text actor_ref_code
     text prompt
     text model
     int max_tokens
@@ -376,12 +400,12 @@ erDiagram
     timestamptz created_at
   }
 
-  users ||--o{ object_refs : owns
+  users ||--o{ object_refs : instance_anchor
   object_refs ||--o{ search_documents : indexed_object
-  users |o--o{ search_documents : owns
+  users |o--o{ search_documents : instance_anchor
   object_refs ||--o{ search_index_queue_jobs : index_target
 
-  users ||--o{ llm_sessions : owns
+  users ||--o{ llm_sessions : instance_anchor
   llm_sessions ||--o{ llm_requests : requests
   llm_requests ||--o{ llm_request_references : references
   object_refs |o--o{ llm_request_references : referenced_object
@@ -409,7 +433,7 @@ object_refs.status stores the current status projection for registered business 
 object_refs.title stores the cross-module title projection for registered business objects
 object_refs.tags stores the cross-module tag projection for registered business objects
 status semantics and transitions are owned by source business modules; status does not grant access
-owner_id is the default resource ownership field
+owner_id is a legacy-named relational anchor to the singleton administrator row; it is not an authorization or ownership field
 object_refs.id is the global object id for cross-module relations
 ref_code is the human-readable object reference for UI, search, and LLM
 object_refs is the authoritative source of ref_code and metadata title/tags/status projections

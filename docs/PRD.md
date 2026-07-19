@@ -25,12 +25,12 @@ Current baseline scope stays in PRD.md
 
 ## Current Baseline Scope
 
-The core product loop is now treated as closed: a runnable personal self-hosted data service with identity, files, notes, accounting, calendar, ObjectRef metadata search, REST, local filesystem storage, PostgreSQL, Redis-backed sessions, and Docker Compose development deployment.
+The core product loop is now treated as closed: a runnable personal self-hosted data service with one administrator identity, scoped API keys, files, notes, accounting, calendar, ObjectRef metadata search, REST, local filesystem storage, PostgreSQL, Redis-backed browser sessions, and Docker Compose development deployment.
 
 Current included capabilities:
 
 ```text
-Identity / Auth / Audit
+Single Administrator / API Keys / Auth / Audit
 Files
 Notes
 Accounting
@@ -115,6 +115,8 @@ Development defaults to deploying the development environment via the root `dock
 Default components include the Go app, PostgreSQL, Redis, and a local FS file storage directory.
 Splitting default components into multi-container deployments can be considered later.
 No multi-tenancy.
+No multiple human accounts, registration, invitations, roles, sharing, or user-based data isolation.
+Programmatic access uses named, scoped, revocable API keys whose complete secrets are shown once.
 Enterprise collaboration, organization management, or public SaaS are not the main goals.
 High-sensitivity data such as emails, passwords, keys, investments, medical, legal, and identity documents are not handled.
 The core goal is to unify scattered personal services and connect them to LLMs.
@@ -126,7 +128,7 @@ LLM is not designed as an agent that can read or operate on high-sensitivity dat
 Resource-level authorization is executed at the service layer.
 Access does not generate business SQL; the repo only applies fixed scopes.
 Platform/Search is currently an ObjectRef metadata capability for exact reference lookup, filtered metadata search, and recent-object metadata.
-Platform/ObjectRef can provide unified readable reference codes for important objects, and return title/tags/status projections as a unified owner-only metadata result for user reference, LLM calls, search, and cross-module association.
+Platform/ObjectRef can provide unified readable reference codes for important objects, and return title/tags/status projections as shared instance metadata for administrator/API-client reference, LLM calls, search, and cross-module association.
 Calendar is reduced to EventAggregate / Event: Aggregate owns immutable metadata and tags, and specific events own start and end timestamps, immutable metadata, tags, and scheduled/finished/voided status.
 Life Records is reduced to Accounting / Bookkeeping.
 Accounting only records and aggregates; it does not provide investment advice or automatic bank synchronization.

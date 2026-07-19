@@ -94,7 +94,7 @@ Initial code inventory decision:
 ```text
 plain native HTML first
 minimal vanilla JavaScript fetch for REST calls when required
-authenticated fetch streaming for SSE flows that require Bearer JWT
+authenticated fetch streaming for SSE flows that require a Bearer administrator JWT or Saturn API key
 no React / Vite / Node build step in the initial pass
 ```
 

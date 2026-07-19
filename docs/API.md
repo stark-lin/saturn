@@ -40,7 +40,7 @@ Cross-module orchestrations are still recorded in the orchestrating owner's API 
 | Files | [api/FILES.md](api/FILES.md) | `/api/files` | Collection / File APIs registered |
 | Calendar | [api/CALENDAR.md](api/CALENDAR.md) | `/api/calendar` | EventAggregate / ICS import / Event APIs registered |
 | LLM | [api/LLM.md](api/LLM.md) | `/api/llm` | Session / Request / Response APIs registered |
-| Platform | [api/PLATFORM.md](api/PLATFORM.md) | `/api/auth`, `/api/events`, `/api/platform/*` | Auth, events, metadata, and superuser audit queries registered |
+| Platform | [api/PLATFORM.md](api/PLATFORM.md) | `/api/auth`, `/api/events`, `/api/platform/*` | Administrator sessions, API keys, events, shared metadata, and administrator audit queries registered |
 
 ### 2.2 Non-module APIs
 
@@ -101,7 +101,7 @@ API business route prefix is /api
 REST JSON responses use `Content-Type: application/json`. Routes requiring authentication use:
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <administrator-jwt-or-api-key>
 ```
 
 For the specific contract of authentication endpoints, see [api/PLATFORM.md](api/PLATFORM.md).
@@ -132,9 +132,9 @@ Resource does not exist: HTTP 404, code = "not_found"
 Resource exists but the current actor has no access: HTTP 404, code = "not_found"
 ```
 
-Do not return `access_denied`, `forbidden`, or HTTP 403 for such resource-level authorization failures. Authentication failures can still return HTTP 401, e.g., not logged in, expired session, or invalid credentials. Non-resource-level global entry restrictions can be defined by the module contract, but must not leak the existence of specific resources.
+Business resources are shared within the instance. `403/insufficient_scope` is used when an otherwise valid API key lacks the route's `data:read` or `data:write` scope. Administrator-only platform operations return `403/forbidden` to API-key principals.
 
-Plain text passwords and JWT / `Authorization` headers are sensitive information and must not be written to logs, audit metadata, or normal API responses.
+Plain text passwords, complete API keys, JWTs, and `Authorization` headers are sensitive information and must not be written to logs, audit metadata, or normal API responses. A newly generated API key is the sole exception: its complete value appears once in the successful creation response.
 
 ---
 
@@ -179,7 +179,7 @@ Recently updated metadata queries are returned as a JSON list by GET /api/platfo
 Metadata responses uniformly include title, tags, and status; tagless objects return an empty array, and tags retain their first-occurrence order after server-side normalization
 Whenever ref_code is returned in a business object response, tags must also be returned simultaneously; SYS-00000000 is used only for system-level audit targets, is not registered as a business object, and does not require tags
 Source business modules synchronously maintain the corresponding metadata projection when creating or updating objects that affect title/tags/status, and hard deletion removes the projection; Notes hard deletion removes both its `nte-obj` and every associated `version-obj`
-These metadata queries only allow access by the resource owner; status does not grant read permissions, nor does the superuser role relax this entry point
+These metadata queries operate on shared instance data and require the `data:read` scope; status does not grant additional permissions
 Metadata interfaces do not return business object contents, owner_ids, internal object ids, or business detail URLs; the actual reading endpoint is still defined by the module that owns the object
 ```
 

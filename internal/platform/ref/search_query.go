@@ -1,4 +1,4 @@
-// This file validates owner-only metadata search filters.
+// This file validates shared-instance metadata search filters.
 package ref
 
 import "strings"

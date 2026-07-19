@@ -1,4 +1,4 @@
-// This file exposes the superuser-only read endpoint for audit logs.
+// This file exposes the administrator-only read endpoint for audit logs.
 package audit
 
 import (
@@ -57,7 +57,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func bindQuery(values url.Values) (Query, error) {
 	for key := range values {
 		switch key {
-		case "target_ref_code", "actor_user_id", "action", "result", "limit", "offset":
+		case "target_ref_code", "actor_ref_code", "action", "result", "limit", "offset":
 		default:
 			return Query{}, errors.New("unsupported query parameter")
 		}
@@ -69,12 +69,11 @@ func bindQuery(values url.Values) (Query, error) {
 			return Query{}, ErrInvalidEvent
 		}
 	}
-	if value := strings.TrimSpace(values.Get("actor_user_id")); value != "" {
-		parsed, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || parsed < 1 {
+	if value := strings.ToUpper(strings.TrimSpace(values.Get("actor_ref_code"))); value != "" {
+		if !validActorRefCode(value) {
 			return Query{}, ErrInvalidEvent
 		}
-		query.ActorUserID = parsed
+		query.ActorRefCode = value
 	}
 	if value := strings.TrimSpace(values.Get("action")); value != "" {
 		query.Action = Action(strings.ToUpper(value))

@@ -18,7 +18,7 @@ Local filesystem storage under configured storage.root
 Redis is strictly required for:
 
 ```text
-session
+administrator browser sessions
 ```
 
 LLM requests, once submitted, are stored in PostgreSQL `llm_requests`, claimed by a fixed number of in-app workers using `FOR UPDATE SKIP LOCKED`, and the `success/error` results are written back to PostgreSQL; the current baseline does not configure retries or dead-letters. If a single provider call exceeds `llm.timeout_seconds`, an `error` is written with `error_code = llm_request_timeout`.
@@ -152,7 +152,7 @@ Startup dependency readiness is configured in the `startup` section:
 
 At process startup, PostgreSQL and Redis readiness checks run concurrently. The main startup flow blocks until both are ready, then runs migrations, wires services, and only then starts the HTTP server and workers. If either dependency remains unavailable past `startup.readiness_timeout_seconds`, startup fails fast without entering a degraded mode.
 
-Authentication configuration includes the JWT signature secret and token validity in minutes. The repository template and Docker development config still use a development secret, but when `config.json` does not exist the startup path generates a new config file with a random `auth.jwt_secret` and writes it to disk. If an existing config file is present, `auth.jwt_secret` and `auth.token_ttl_minutes` still must be provided explicitly.
+Authentication configuration includes the administrator JWT signature secret and token validity in minutes. Saturn access API keys are generated at runtime and persisted only as SHA-256 digests in PostgreSQL; they have no configuration-file secret. The repository template and Docker development config still use a development JWT secret, but when `config.json` does not exist the startup path generates a random `auth.jwt_secret` and writes it to disk. Existing config files must provide `auth.jwt_secret` and `auth.token_ttl_minutes` explicitly.
 
 LLM configuration is located in the `llm` section:
 
@@ -235,7 +235,7 @@ docker compose up -d redis
 
 Files blob storage uses the local file system, with the default directory being `./objects`, which can be specified via `storage.root` or `SATURN_STORAGE_ROOT` when the config is first generated.
 
-Business modules must not directly depend on the Redis client, LLM SDK, or specific external service clients; Files must access local FS storage capabilities via `internal/platform/storage`. The Redis client is only used by the auth session store.
+Business modules must not directly depend on the Redis client, LLM SDK, or specific external service clients; Files must access local FS storage capabilities via `internal/platform/storage`. The Redis client is only used by the administrator auth session store; API-key authentication uses PostgreSQL.
 
 External service clients can only be encapsulated in the corresponding packages within `internal/platform`.
 

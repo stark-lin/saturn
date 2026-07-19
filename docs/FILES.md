@@ -4,7 +4,7 @@
 
 This document is the entry index for the project directory structure, file responsibilities, module boundaries, and dependency rules. Details are split by topic into the following sub-documents.
 
-The project adopts a Go modular monolith structure. The system takes personal self-hosting as its main use case. During development, it defaults to running the app, PostgreSQL, Redis, and a local FS file storage volume via the root `docker-compose.yml`. Redis is used only for Session state management and remains a required infrastructure component for authentication; a Redis-less operation mode is not provided. Adjustments to deployment forms can be considered later, but the default infrastructure constraints will not be changed.
+The project adopts a Go modular monolith structure. The system takes personal self-hosting as its main use case. During development, it defaults to running the app, PostgreSQL, Redis, and a local FS file storage volume via the root `docker-compose.yml`. Redis is used only for administrator browser-session state; API keys are persisted in PostgreSQL and do not create Redis sessions. Redis remains required for Web authentication and no Redis-less operation mode is provided.
 
 ---
 

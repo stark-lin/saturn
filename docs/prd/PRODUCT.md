@@ -96,8 +96,9 @@ The system can retain configuration extensibility, but product design, documenta
 
 ```text
 Personal use is the first priority.
-superuser is the instance owner.
-Regular user is only used for limited sharing, family members, trusted collaborators, or permission isolation.
+Exactly one human administrator controls the instance.
+Programmatic clients use named, scoped API keys.
+Registration, invitations, additional human accounts, roles, sharing, and user-level isolation are not provided.
 The system does not do multi-tenancy.
 The system does not provide tenant / workspace / organization level isolation models.
 The system is not primarily intended for team collaboration, enterprise management, or commercial SaaS scenarios.
@@ -123,7 +124,7 @@ Explicitly not acting as the following systems:
 Email client
 Email archiving system
 Password manager
-Key management system
+General-purpose key management or secret-vault system
 Investment portfolio management system
 Securities / Funds / Crypto asset analysis system
 Medical health record system
@@ -137,7 +138,7 @@ Defaults to not collecting, syncing, or parsing the following types of data:
 Email bodies
 Email account credentials
 Website passwords
-API secrets / private keys
+Third-party API secrets / private keys, except Saturn's own one-time-issued access keys
 Bank transaction automatic sync data
 Securities / Funds / Crypto asset holding data
 Medical diagnosis records
@@ -151,7 +152,7 @@ LLMs should not be designed as agents capable of reading or operating on the hig
 
 ---
 
-## 2. User and Permission Model
+## 2. Administrator and API Key Model
 
 ### 2.1 Usage Model
 
@@ -163,23 +164,20 @@ System mindset:
 
 ```text
 This is my personal system.
-I am the superuser.
-I can create ordinary users.
-Ordinary users can only use partially opened capabilities.
+I am the single administrator, identified by USR-00000001.
+I create named API keys for MCP, agents, CLI, and automation.
+All business data belongs to the instance, not to an account or API key.
 ```
 
-### 2.2 Roles
+### 2.2 Principal Kinds
 
-| Role | Description |
-| --------- | ------------------------------------ |
-| superuser | Instance owner, with full system permissions |
-| user | Ordinary user, permissions are a proper subset of the superuser; only for limited sharing or permission isolation |
+| Kind | Stable identity | Description |
+| --- | --- | --- |
+| Administrator | `USR-00000001` | Human Web login, account/API-key/configuration/audit management, and business operations |
+| API key | `KEY-xxxxxxxx` | Programmatic access constrained by immutable creation-time scopes |
+| System | `SYS-00000000` | Internal or unidentified authentication actions |
 
-Permission relationship:
-
-```text
-user ⊂ superuser
-```
+Supported API-key scopes are `data:read` and `data:write`; write implies read. API keys cannot manage the administrator, other keys, or audit-log queries.
 
 ### 2.3 Object Status
 
@@ -204,7 +202,7 @@ File upload
 File deletion
 Batch modification
 Permission changes
-User creation / deletion
+API key creation / revocation
 LLM tool call
 LLM action confirmation
 ```
@@ -218,22 +216,22 @@ Execution principles:
 ```text
 Authentication is completed in middleware
 handlers only do entry control, parameter binding, and calling services
-Resource-level authorization is completed in the service
+Action-scope authorization is completed before or within the service
 Business services receive the current actor / Principal
 services judge whether an action can be executed via an auth authorizer
 Key write operations are recorded in the audit log by the service
 repos do not redefine permission policies
 ```
 
-Lists and searches use simple access scopes:
+Lists and searches use the shared instance scope:
 
 ```text
-superuser: all
-owner: owner_id = actor_id
-shared: exists share row
+authenticated administrator: all
+API key with data:read: all instance reads
+API key with data:write: all instance reads and writes
 ```
 
-The auth layer does not generate business SQL. The business repo only translates fixed scopes into its own parameterized queries, avoiding scattering permission rules into every SQL statement.
+The auth layer does not generate business SQL. The business repo translates a fixed all-instance scope into parameterized queries. Historical `owner_id` columns are singleton relational anchors only and do not represent data ownership.
 
 ---
 
@@ -249,7 +247,7 @@ Saturn
 ├── Calendar
 ├── LLM
 └── Platform
-    ├── Auth
+    ├── Administrator Auth / API Keys
     ├── Config
     ├── Search
     ├── ObjectRef

@@ -5,15 +5,6 @@ import "time"
 
 const SystemTargetRefCode = "SYS-00000000"
 
-type ActorType string
-
-const (
-	ActorTypeUser      ActorType = "USER"
-	ActorTypeSystem    ActorType = "SYSTEM"
-	ActorTypeLLM       ActorType = "LLM"
-	ActorTypeAnonymous ActorType = "ANONYMOUS"
-)
-
 type Action string
 
 const (
@@ -36,8 +27,7 @@ const (
 
 type Event struct {
 	ID            int64     `json:"id"`
-	ActorType     ActorType `json:"actor_type"`
-	ActorUserID   int64     `json:"actor_user_id,omitempty"`
+	ActorRefCode  string    `json:"actor_ref_code"`
 	Action        Action    `json:"action"`
 	TargetRefCode string    `json:"target_ref_code"`
 	Result        Result    `json:"result"`
@@ -49,7 +39,7 @@ type Event struct {
 
 type Query struct {
 	TargetRefCode string
-	ActorUserID   int64
+	ActorRefCode  string
 	Action        Action
 	Result        Result
 	Limit         int

@@ -1,24 +1,54 @@
 // This file defines authenticated Saturn principals.
 package auth
 
-type Role string
+import "slices"
+
+const AdministratorRefCode = "USR-00000001"
+
+type PrincipalKind string
 
 const (
-	RoleSuperuser Role = "superuser"
-	RoleUser      Role = "user"
+	PrincipalKindAdministrator PrincipalKind = "administrator"
+	PrincipalKindAPIKey        PrincipalKind = "api_key"
 )
 
+type ScopeName string
+
+const (
+	ScopeDataRead  ScopeName = "data:read"
+	ScopeDataWrite ScopeName = "data:write"
+)
+
+var SupportedAPIKeyScopes = []ScopeName{ScopeDataRead, ScopeDataWrite}
+
 type Principal struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email,omitempty"`
-	Role     Role   `json:"role"`
+	ID       int64         `json:"-"`
+	RefCode  string        `json:"refcode"`
+	Kind     PrincipalKind `json:"kind"`
+	Username string        `json:"username,omitempty"`
+	Email    string        `json:"email,omitempty"`
+	Name     string        `json:"name,omitempty"`
+	Scopes   []ScopeName   `json:"scopes,omitempty"`
 }
 
 func (p Principal) IsZero() bool {
-	return p.ID == 0
+	return p.ID == 0 || p.RefCode == "" || (p.Kind != PrincipalKindAdministrator && p.Kind != PrincipalKindAPIKey)
 }
 
-func (p Principal) IsSuperuser() bool {
-	return p.Role == RoleSuperuser
+func (p Principal) ActorRefCode() string {
+	return p.RefCode
+}
+
+func (p Principal) IsAdministrator() bool {
+	return p.Kind == PrincipalKindAdministrator
+}
+
+func (p Principal) Allows(scope ScopeName) bool {
+	if p.Kind != PrincipalKindAPIKey {
+		return true
+	}
+	if scope == ScopeDataRead && slices.Contains(p.Scopes, ScopeDataWrite) {
+		return true
+	}
+	return slices.Contains(p.Scopes, scope)
 }

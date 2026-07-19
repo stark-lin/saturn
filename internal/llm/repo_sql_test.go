@@ -141,7 +141,7 @@ func TestSQLRepositoryScannersMapRows(t *testing.T) {
 	}
 
 	request, err := scanRequestWithRef(fakeRow{values: []any{
-		int64(2), int64(7), int64(1), int64(7), int64(21), "LLM-00000002", []byte(`{"review"}`),
+		int64(2), int64(7), int64(1), "USR-00000001", int64(21), "LLM-00000002", []byte(`{"review"}`),
 		"Prompt", "test-model", 100, json.RawMessage(`{"references":[]}`), json.RawMessage(`{"messages":[]}`),
 		string(ResponseStatusSuccess), "answer", "", "", json.RawMessage(`{"ok":true}`),
 		createdAt, updatedAt, completedAt,

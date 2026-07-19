@@ -1,4 +1,4 @@
-// This file tests the owner-only global-search reference metadata endpoint.
+// This file tests the shared-instance global-search reference metadata endpoint.
 package search
 
 import (
@@ -24,7 +24,7 @@ func TestHandlerMetadataReturnsReferenceJSON(t *testing.T) {
 	}}
 	handler := NewHandler(resolver)
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/search?ref_code=nte-00000001", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.Metadata(response, request)
@@ -53,7 +53,7 @@ func TestHandlerObjectRefMetadataReturnsReferenceJSON(t *testing.T) {
 	handler := NewHandler(resolver)
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/object-refs/fil-00000001", nil)
 	request.SetPathValue("ref_code", "fil-00000001")
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.ObjectRefMetadata(response, request)
@@ -74,7 +74,7 @@ func TestHandlerObjectRefMetadataRejectsInvalidReferenceCode(t *testing.T) {
 	handler := NewHandler(&fakeMetadataResolver{})
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/object-refs/not-a-code", nil)
 	request.SetPathValue("ref_code", "not-a-code")
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.ObjectRefMetadata(response, request)
@@ -87,7 +87,7 @@ func TestHandlerObjectRefMetadataRejectsInvalidReferenceCode(t *testing.T) {
 func TestHandlerMetadataHidesUnauthorizedOrMissingReferences(t *testing.T) {
 	handler := NewHandler(&fakeMetadataResolver{err: ref.ErrNotFound})
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/search?ref_code=FIL-00000001", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 8, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 8, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.Metadata(response, request)
@@ -100,7 +100,7 @@ func TestHandlerMetadataHidesUnauthorizedOrMissingReferences(t *testing.T) {
 func TestHandlerMetadataRejectsMissingReferenceCode(t *testing.T) {
 	handler := NewHandler(&fakeMetadataResolver{})
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/search", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.Metadata(response, request)
@@ -131,7 +131,7 @@ func TestHandlerSearchObjectRefsReturnsJSONList(t *testing.T) {
 		"limit":40
 	}`
 	request := httptest.NewRequest(http.MethodPost, "/api/platform/object-refs/search", strings.NewReader(body))
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.SearchObjectRefs(response, request)
@@ -163,7 +163,7 @@ func TestHandlerSearchObjectRefsReturnsJSONList(t *testing.T) {
 func TestHandlerSearchObjectRefsReturnsEmptyArray(t *testing.T) {
 	handler := NewHandler(&fakeMetadataResolver{})
 	request := httptest.NewRequest(http.MethodPost, "/api/platform/object-refs/search", strings.NewReader(`{}`))
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.SearchObjectRefs(response, request)
@@ -187,7 +187,7 @@ func TestHandlerSearchObjectRefsRejectsInvalidRequest(t *testing.T) {
 	} {
 		handler := NewHandler(&fakeMetadataResolver{})
 		request := httptest.NewRequest(http.MethodPost, "/api/platform/object-refs/search", strings.NewReader(body))
-		request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+		request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 		response := httptest.NewRecorder()
 
 		handler.SearchObjectRefs(response, request)
@@ -199,7 +199,7 @@ func TestHandlerSearchObjectRefsRejectsInvalidRequest(t *testing.T) {
 
 	handler := NewHandler(&fakeMetadataResolver{err: ref.ErrInvalidMetadataSearchQuery})
 	request := httptest.NewRequest(http.MethodPost, "/api/platform/object-refs/search", strings.NewReader(`{"modules":["unknown"]}`))
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.SearchObjectRefs(response, request)
@@ -220,7 +220,7 @@ func TestHandlerRecentObjectsReturnsMetadataEnvelope(t *testing.T) {
 	}}}
 	handler := NewHandler(resolver)
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/recent-objects?limit=4", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.RecentObjects(response, request)
@@ -243,7 +243,7 @@ func TestHandlerRecentObjectsReturnsMetadataEnvelope(t *testing.T) {
 func TestHandlerRecentObjectsReturnsEmptyArray(t *testing.T) {
 	handler := NewHandler(&fakeMetadataResolver{})
 	request := httptest.NewRequest(http.MethodGet, "/api/platform/recent-objects", nil)
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 	response := httptest.NewRecorder()
 
 	handler.RecentObjects(response, request)
@@ -268,7 +268,7 @@ func TestHandlerRecentObjectsRejectsInvalidLimit(t *testing.T) {
 	} {
 		handler := NewHandler(&fakeMetadataResolver{})
 		request := httptest.NewRequest(http.MethodGet, target, nil)
-		request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+		request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 		response := httptest.NewRecorder()
 
 		handler.RecentObjects(response, request)

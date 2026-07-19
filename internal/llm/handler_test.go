@@ -261,7 +261,7 @@ func TestHandlerMapsServiceErrors(t *testing.T) {
 
 func authenticatedLLMRequest(method string, target string, body string) *http.Request {
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
-	principal := auth.Principal{ID: 1, Username: "alice", Role: auth.RoleUser}
+	principal := auth.Principal{ID: 1, Username: "alice", RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 	return request.WithContext(auth.ContextWithPrincipal(request.Context(), principal))
 }
 

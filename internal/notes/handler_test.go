@@ -1,4 +1,4 @@
-// This file tests the owner-only Notes HTTP contract.
+// This file tests the shared-instance Notes HTTP contract.
 package notes
 
 import (
@@ -181,5 +181,5 @@ func authenticatedRequest(method string, target string, body string) *http.Reque
 		buffer = bytes.NewBufferString(body)
 	}
 	request := httptest.NewRequest(method, target, buffer)
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }

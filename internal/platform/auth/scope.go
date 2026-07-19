@@ -2,14 +2,10 @@
 package auth
 
 type Scope struct {
-	All           bool
-	OwnerID       int64
-	IncludeShared bool
+	All     bool
+	OwnerID int64
 }
 
 func ScopeForPrincipal(principal Principal) Scope {
-	if principal.IsSuperuser() {
-		return Scope{All: true}
-	}
-	return Scope{OwnerID: principal.ID, IncludeShared: true}
+	return Scope{All: !principal.IsZero()}
 }

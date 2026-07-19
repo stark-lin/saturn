@@ -33,6 +33,7 @@ type Service struct {
 	transactions platformdb.TransactionRunner
 	references   ObjectReferenceService
 	audit        AuditService
+	authorizer   *auth.Authorizer
 }
 
 func NewService(
@@ -46,18 +47,19 @@ func NewService(
 	}
 	return &Service{
 		repo: repo, transactions: transactions, references: references, audit: auditService,
+		authorizer: auth.NewAuthorizer(),
 	}
 }
 
 func (s *Service) ListNotes(ctx context.Context, actor auth.Principal, query Query) (Page, error) {
-	if actor.IsZero() {
-		return Page{}, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionRead); err != nil {
+		return Page{}, err
 	}
 	if s.repo == nil {
 		return Page{}, ErrRepositoryUnavailable
 	}
 	query = normalizedQuery(query)
-	page, err := s.repo.ListNotes(ctx, actor.ID, query)
+	page, err := s.repo.ListNotes(ctx, query)
 	if err != nil {
 		return Page{}, err
 	}
@@ -67,8 +69,8 @@ func (s *Service) ListNotes(ctx context.Context, actor auth.Principal, query Que
 }
 
 func (s *Service) CreateNote(ctx context.Context, actor auth.Principal, markdown string) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionCreate); err != nil {
+		return Note{}, err
 	}
 	parsed, err := ParseMarkdown(markdown)
 	if err != nil {
@@ -113,13 +115,13 @@ func (s *Service) CreateNote(ctx context.Context, actor auth.Principal, markdown
 		if err != nil {
 			return err
 		}
-		if err := s.repo.SetCurrentVersion(txCtx, actor.ID, note.ID, version.ID); err != nil {
+		if err := s.repo.SetCurrentVersion(txCtx, note.ID, version.ID); err != nil {
 			return err
 		}
 		if err := s.recordVersionAndNoteAudits(txCtx, actor, versionObject.RefCode, noteObject.RefCode, audit.ActionCreate, ""); err != nil {
 			return err
 		}
-		created, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, noteObject.RefCode)
+		created, err = s.repo.FindNoteByRefCode(txCtx, noteObject.RefCode)
 		return err
 	})
 	if err != nil {
@@ -129,38 +131,38 @@ func (s *Service) CreateNote(ctx context.Context, actor auth.Principal, markdown
 }
 
 func (s *Service) GetNote(ctx context.Context, actor auth.Principal, refCode string) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionRead); err != nil {
+		return Note{}, err
 	}
 	if s.repo == nil {
 		return Note{}, ErrRepositoryUnavailable
 	}
-	return s.repo.FindNoteByRefCode(ctx, actor.ID, ref.NormalizeCode(refCode))
+	return s.repo.FindNoteByRefCode(ctx, ref.NormalizeCode(refCode))
 }
 
 func (s *Service) GetVersion(ctx context.Context, actor auth.Principal, refCode string) (Version, error) {
-	if actor.IsZero() {
-		return Version{}, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionRead); err != nil {
+		return Version{}, err
 	}
 	if s.repo == nil {
 		return Version{}, ErrRepositoryUnavailable
 	}
-	return s.repo.FindVersionByRefCode(ctx, actor.ID, ref.NormalizeCode(refCode))
+	return s.repo.FindVersionByRefCode(ctx, ref.NormalizeCode(refCode))
 }
 
 func (s *Service) ListVersions(ctx context.Context, actor auth.Principal, noteRefCode string) ([]Version, error) {
-	if actor.IsZero() {
-		return nil, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionRead); err != nil {
+		return nil, err
 	}
 	if s.repo == nil {
 		return nil, ErrRepositoryUnavailable
 	}
-	return s.repo.ListVersions(ctx, actor.ID, ref.NormalizeCode(noteRefCode))
+	return s.repo.ListVersions(ctx, ref.NormalizeCode(noteRefCode))
 }
 
 func (s *Service) UpdateNote(ctx context.Context, actor auth.Principal, refCode string, markdown string) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionUpdate); err != nil {
+		return Note{}, err
 	}
 	parsed, err := ParseMarkdown(markdown)
 	if err != nil {
@@ -172,32 +174,32 @@ func (s *Service) UpdateNote(ctx context.Context, actor auth.Principal, refCode 
 }
 
 func (s *Service) DeleteNote(ctx context.Context, actor auth.Principal, refCode string) error {
-	if actor.IsZero() {
-		return auth.ErrUnauthenticated
+	if err := s.authorize(actor, auth.ActionDelete); err != nil {
+		return err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return err
 	}
 	refCode = ref.NormalizeCode(refCode)
 	err := s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
-		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, refCode)
+		note, err := s.repo.LockNoteByRefCode(txCtx, refCode)
 		if err != nil {
 			return err
 		}
-		versions, err := s.repo.ListVersions(txCtx, actor.ID, note.RefCode)
+		versions, err := s.repo.ListVersions(txCtx, note.RefCode)
 		if err != nil {
 			return err
 		}
 		for _, version := range versions {
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 				TargetRefCode: version.RefCode, Result: audit.ResultSuccess, Reason: deleteReasonCascadeNoteDelete,
 			}); err != nil {
 				return err
 			}
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 			TargetRefCode: note.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -210,7 +212,7 @@ func (s *Service) DeleteNote(ctx context.Context, actor auth.Principal, refCode 
 		if err := s.references.Delete(txCtx, note.OwnerID, ref.ObjectTypeNote, note.ID); err != nil {
 			return err
 		}
-		return s.repo.DeleteNote(txCtx, note.OwnerID, note.ID)
+		return s.repo.DeleteNote(txCtx, note.ID)
 	})
 	if err != nil {
 		return s.recordWriteFailure(ctx, actor, audit.ActionDelete, refCode, err)
@@ -226,9 +228,6 @@ type nextVersionContent struct {
 }
 
 func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, noteRefCode string, next nextVersionContent) (Note, error) {
-	if actor.IsZero() {
-		return Note{}, auth.ErrUnauthenticated
-	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return Note{}, err
 	}
@@ -240,7 +239,7 @@ func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, n
 
 	var updated Note
 	err = s.transactions.WithinTransaction(ctx, func(txCtx context.Context) error {
-		note, err := s.repo.LockNoteByRefCode(txCtx, actor.ID, noteRefCode)
+		note, err := s.repo.LockNoteByRefCode(txCtx, noteRefCode)
 		if err != nil {
 			return err
 		}
@@ -259,7 +258,7 @@ func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, n
 		if err != nil {
 			return err
 		}
-		if err := s.repo.SetCurrentVersion(txCtx, actor.ID, note.ID, version.ID); err != nil {
+		if err := s.repo.SetCurrentVersion(txCtx, note.ID, version.ID); err != nil {
 			return err
 		}
 		if _, err := s.references.UpdateProjection(txCtx, ref.ProjectionUpdate{
@@ -271,7 +270,7 @@ func (s *Service) createNextVersion(ctx context.Context, actor auth.Principal, n
 		if err := s.recordVersionAndNoteAudits(txCtx, actor, versionObject.RefCode, note.RefCode, audit.ActionUpdate, ""); err != nil {
 			return err
 		}
-		updated, err = s.repo.FindNoteByRefCode(txCtx, actor.ID, note.RefCode)
+		updated, err = s.repo.FindNoteByRefCode(txCtx, note.RefCode)
 		return err
 	})
 	if err != nil {
@@ -289,13 +288,13 @@ func (s *Service) recordVersionAndNoteAudits(
 	reason string,
 ) error {
 	if _, err := s.audit.Record(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+		ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 		TargetRefCode: versionRefCode, Result: audit.ResultSuccess,
 	}); err != nil {
 		return err
 	}
 	_, err := s.audit.Record(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: noteAction,
+		ActorRefCode: actor.ActorRefCode(), Action: noteAction,
 		TargetRefCode: noteRefCode, Result: audit.ResultSuccess, Reason: reason,
 	})
 	return err
@@ -309,7 +308,7 @@ func (s *Service) recordWriteFailure(ctx context.Context, actor auth.Principal, 
 		reason = "not_found"
 	}
 	auditErr := s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: action,
+		ActorRefCode: actor.ActorRefCode(), Action: action,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 	if auditErr != nil {
@@ -326,6 +325,13 @@ func (s *Service) requireWriteDependencies() error {
 		return ErrDependencyUnavailable
 	}
 	return nil
+}
+
+func (s *Service) authorize(actor auth.Principal, action auth.Action) error {
+	if s.authorizer == nil {
+		return ErrDependencyUnavailable
+	}
+	return s.authorizer.Can(actor, action, auth.Resource{Type: "note"})
 }
 
 func normalizedQuery(query Query) Query {

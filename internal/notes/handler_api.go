@@ -1,4 +1,4 @@
-// This file exposes authenticated owner-only Notes API handlers.
+// This file exposes authenticated shared-instance Notes API handlers.
 package notes
 
 import (
@@ -51,7 +51,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	principal, refCode, ok := bindNoteRequest(w, r)
 	if !ok {
 		return
 	}
@@ -63,7 +63,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	principal, refCode, ok := bindNoteRequest(w, r)
 	if !ok {
 		return
 	}
@@ -75,7 +75,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListVersions(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	principal, refCode, ok := bindNoteRequest(w, r)
 	if !ok {
 		return
 	}
@@ -87,7 +87,7 @@ func (h *Handler) ListVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	principal, refCode, ok := bindNoteRequest(w, r)
 	if !ok {
 		return
 	}
@@ -104,7 +104,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	principal, refCode, ok := bindOwnedNoteRequest(w, r)
+	principal, refCode, ok := bindNoteRequest(w, r)
 	if !ok {
 		return
 	}
@@ -121,6 +121,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, auth.ErrUnauthenticated):
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
+	case errors.Is(err, auth.ErrForbidden):
+		httpx.WriteError(w, http.StatusForbidden, "insufficient_scope", "The credential does not allow this operation")
 	case errors.Is(err, ErrInvalidMarkdown):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_markdown", "Invalid note markdown")
 	case errors.Is(err, ErrNoteNotFound), errors.Is(err, ErrVersionNotFound), errors.Is(err, ref.ErrNotFound):
@@ -131,7 +133,7 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-func bindOwnedNoteRequest(w http.ResponseWriter, r *http.Request) (auth.Principal, string, bool) {
+func bindNoteRequest(w http.ResponseWriter, r *http.Request) (auth.Principal, string, bool) {
 	principal, ok := auth.PrincipalFromContext(r.Context())
 	if !ok {
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")

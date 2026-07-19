@@ -1,15 +1,18 @@
 -- This migration moves LLM request queue claiming into PostgreSQL.
 ALTER TABLE llm_requests
-ADD COLUMN IF NOT EXISTS actor_user_id BIGINT REFERENCES users(id);
+ADD COLUMN IF NOT EXISTS actor_ref_code TEXT CHECK (
+    actor_ref_code = 'USR-00000001'
+    OR actor_ref_code ~ '^KEY-[0-9A-F]{8}$'
+);
 
 ALTER TABLE llm_requests DISABLE TRIGGER llm_requests_single_response_write;
 
 UPDATE llm_requests
-SET actor_user_id = owner_id
-WHERE actor_user_id IS NULL;
+SET actor_ref_code = 'USR-00000001'
+WHERE actor_ref_code IS NULL;
 
 ALTER TABLE llm_requests
-ALTER COLUMN actor_user_id SET NOT NULL;
+ALTER COLUMN actor_ref_code SET NOT NULL;
 
 ALTER TABLE llm_requests ENABLE TRIGGER llm_requests_single_response_write;
 
@@ -29,7 +32,7 @@ BEGIN
 
     IF NEW.owner_id IS DISTINCT FROM OLD.owner_id
        OR NEW.session_id IS DISTINCT FROM OLD.session_id
-       OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id
+       OR NEW.actor_ref_code IS DISTINCT FROM OLD.actor_ref_code
        OR NEW.prompt IS DISTINCT FROM OLD.prompt
        OR NEW.model IS DISTINCT FROM OLD.model
        OR NEW.max_tokens IS DISTINCT FROM OLD.max_tokens

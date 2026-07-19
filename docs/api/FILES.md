@@ -27,15 +27,15 @@ Tags are written to the corresponding `object_refs.tags` for the Collection or F
 
 | Method | Path | Authentication | Status | Purpose |
 | --- | --- | --- | --- | --- |
-| `GET` | `/api/files/collections` | Bearer JWT | `Implemented` | List collections readable by the current actor |
-| `POST` | `/api/files/collections` | Bearer JWT | `Implemented` | Create a collection |
-| `GET` | `/api/files/collections/{ref_code}` | Bearer JWT | `Implemented` | Read collection metadata |
-| `DELETE` | `/api/files/collections/{ref_code}` | Bearer JWT | `Implemented` | Delete a collection, cascading file deletions via the unified File delete process |
-| `GET` | `/api/files?collection_ref_code=<FIL>&tag=<name>` | Bearer JWT | `Implemented` | List files, filterable by collection or tag |
-| `POST` | `/api/files/collections/{ref_code}/files` | Bearer JWT | `Implemented` | Multipart upload a file to a collection |
-| `GET` | `/api/files/{ref_code}` | Bearer JWT | `Implemented` | Read file metadata |
-| `GET` | `/api/files/objects/{ref_code}/download` | Bearer JWT | `Implemented` | Download file after blob validation |
-| `DELETE` | `/api/files/{ref_code}` | Bearer JWT | `Implemented` | Delete an individual file |
+| `GET` | `/api/files/collections` | `data:read` | `Implemented` | List instance collections |
+| `POST` | `/api/files/collections` | `data:write` | `Implemented` | Create a collection |
+| `GET` | `/api/files/collections/{ref_code}` | `data:read` | `Implemented` | Read collection metadata |
+| `DELETE` | `/api/files/collections/{ref_code}` | `data:write` | `Implemented` | Delete a collection, cascading file deletions via the unified File delete process |
+| `GET` | `/api/files?collection_ref_code=<FIL>&tag=<name>` | `data:read` | `Implemented` | List files, filterable by collection or tag |
+| `POST` | `/api/files/collections/{ref_code}/files` | `data:write` | `Implemented` | Multipart upload a file to a collection |
+| `GET` | `/api/files/{ref_code}` | `data:read` | `Implemented` | Read file metadata |
+| `GET` | `/api/files/objects/{ref_code}/download` | `data:read` | `Implemented` | Download file after blob validation |
+| `DELETE` | `/api/files/{ref_code}` | `data:write` | `Implemented` | Delete an individual file |
 
 ---
 

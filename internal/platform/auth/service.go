@@ -1,31 +1,55 @@
-// This file implements authentication service orchestration.
+// This file implements administrator sessions and API key lifecycle orchestration.
 package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"time"
+
+	platformdb "github.com/stark-lin/saturn/internal/platform/db"
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidUser        = errors.New("invalid user")
-	ErrUserConflict       = errors.New("user conflict")
-	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrInvalidAdministrator  = errors.New("invalid administrator")
+	ErrAdministratorConflict = errors.New("administrator conflict")
+	ErrAdministratorNotFound = errors.New("administrator not found")
+	ErrInvalidAPIKey         = errors.New("invalid api key")
+	ErrAPIKeyConflict        = errors.New("api key conflict")
+	ErrAPIKeyNotFound        = errors.New("api key not found")
 )
 
+var apiKeyNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
 type AuditRecorder interface {
-	RecordAuthentication(ctx context.Context, actorUserID int64, action string, result string, reason string) error
+	RecordAuthentication(ctx context.Context, actorRefCode string, action string, result string, reason string) error
+	RecordActorAction(ctx context.Context, actorRefCode string, action string, targetRefCode string, result string, reason string) error
 }
 
 type Service struct {
-	repo     Repository
-	sessions SessionStore
-	tokens   *TokenManager
-	audit    AuditRecorder
+	repo         Repository
+	sessions     SessionStore
+	tokens       *TokenManager
+	audit        AuditRecorder
+	transactions platformdb.TransactionRunner
+	now          func() time.Time
+	credential   func() (string, string, error)
+}
+
+func NewServiceWithTransactions(repo Repository, sessions SessionStore, tokens *TokenManager, transactions platformdb.TransactionRunner, auditRecorder AuditRecorder) *Service {
+	service := NewService(repo, sessions, tokens, auditRecorder)
+	service.transactions = transactions
+	return service
 }
 
 type LoginResult struct {
@@ -34,21 +58,29 @@ type LoginResult struct {
 	User      Principal `json:"user"`
 }
 
-type CreateUserInput struct {
-	Username string
-	Email    string
-	Password string
-	Role     Role
-}
-
-type UpdateOwnUserInput struct {
+type UpdateAdministratorInput struct {
 	Username *string
 	Email    *string
 }
 
-type ChangeOwnPasswordInput struct {
+type ChangeAdministratorPasswordInput struct {
 	CurrentPassword string
 	NewPassword     string
+}
+
+type CreateAPIKeyInput struct {
+	Name      string
+	Scopes    []ScopeName
+	ExpiresAt *time.Time
+}
+
+type CreateAPIKeyResult struct {
+	RefCode   string      `json:"refcode"`
+	Name      string      `json:"name"`
+	APIKey    string      `json:"api_key"`
+	KeyPrefix string      `json:"key_prefix"`
+	Scopes    []ScopeName `json:"scopes"`
+	ExpiresAt *time.Time  `json:"expires_at"`
 }
 
 func NewService(repo Repository, sessions SessionStore, tokens *TokenManager, auditRecorder ...AuditRecorder) *Service {
@@ -56,189 +88,229 @@ func NewService(repo Repository, sessions SessionStore, tokens *TokenManager, au
 	if len(auditRecorder) > 0 {
 		recorder = auditRecorder[0]
 	}
-	return &Service{repo: repo, sessions: sessions, tokens: tokens, audit: recorder}
+	return &Service{
+		repo: repo, sessions: sessions, tokens: tokens, audit: recorder,
+		now: time.Now, credential: generateAPIKeyCredential,
+	}
 }
 
 func (s *Service) Login(ctx context.Context, username string, password string) (LoginResult, error) {
 	if s.repo == nil || s.sessions == nil || s.tokens == nil {
 		return LoginResult{}, fmt.Errorf("authentication service is not configured")
 	}
-	user, err := s.repo.FindUserByUsername(ctx, strings.TrimSpace(username))
+	user, err := s.repo.FindAdministratorByUsername(ctx, strings.TrimSpace(username))
 	if err != nil || !VerifyPassword(user.PasswordHash, password) {
-		if auditErr := s.recordAuthentication(ctx, 0, "LOGIN", "DENIED", "invalid_credentials"); auditErr != nil {
+		if auditErr := s.recordAuthentication(ctx, SystemActorRefCode, "LOGIN", "DENIED", "invalid_credentials"); auditErr != nil {
 			return LoginResult{}, auditErr
 		}
 		return LoginResult{}, ErrInvalidCredentials
 	}
-	principal := principalForUser(user)
+	principal := principalForAdministrator(user)
 	token, err := s.tokens.Issue(principal)
 	if err != nil {
-		_ = s.recordAuthentication(ctx, principal.ID, "LOGIN", "FAILED", "token_issue_failed")
+		_ = s.recordAuthentication(ctx, principal.ActorRefCode(), "LOGIN", "FAILED", "token_issue_failed")
 		return LoginResult{}, err
 	}
 	if err := s.sessions.Save(ctx, Session{
-		ID:        token.ID,
-		UserID:    principal.ID,
-		ExpiresAt: token.ExpiresAt,
-		CreatedAt: time.Now().UTC(),
+		ID: token.ID, AdministratorRefCode: principal.ActorRefCode(),
+		ExpiresAt: token.ExpiresAt, CreatedAt: s.now().UTC(),
 	}); err != nil {
-		_ = s.recordAuthentication(ctx, principal.ID, "LOGIN", "FAILED", "session_save_failed")
+		_ = s.recordAuthentication(ctx, principal.ActorRefCode(), "LOGIN", "FAILED", "session_save_failed")
 		return LoginResult{}, err
 	}
-	if err := s.recordAuthentication(ctx, principal.ID, "LOGIN", "SUCCESS", ""); err != nil {
+	if err := s.recordAuthentication(ctx, principal.ActorRefCode(), "LOGIN", "SUCCESS", ""); err != nil {
 		_ = s.sessions.Delete(ctx, token.ID)
 		return LoginResult{}, err
 	}
 	return LoginResult{Token: token.Value, ExpiresAt: token.ExpiresAt, User: principal}, nil
 }
 
-func (s *Service) CreateUser(ctx context.Context, actor Principal, input CreateUserInput) (Principal, error) {
-	if s.repo == nil {
-		return Principal{}, fmt.Errorf("authentication service is not configured")
-	}
-	if actor.IsZero() {
-		return Principal{}, ErrUnauthenticated
-	}
-	if !actor.IsSuperuser() {
-		_ = s.recordAuthentication(ctx, actor.ID, "CREATE", "DENIED", "forbidden")
-		return Principal{}, ErrForbidden
-	}
-	input, err := normalizeCreateUserInput(input)
-	if err != nil {
+func (s *Service) UpdateAdministrator(ctx context.Context, actor Principal, input UpdateAdministratorInput) (Principal, error) {
+	if err := requireAdministrator(actor); err != nil {
 		return Principal{}, err
 	}
-	passwordHash, err := HashPassword(input.Password)
-	if err != nil {
-		return Principal{}, err
-	}
-	user, err := s.repo.CreateUser(ctx, CreateUserRecord{
-		Username:     input.Username,
-		Email:        input.Email,
-		Role:         input.Role,
-		PasswordHash: passwordHash,
-	})
-	if err != nil {
-		return Principal{}, err
-	}
-	if err := s.recordAuthentication(ctx, actor.ID, "CREATE", "SUCCESS", "create_user"); err != nil {
-		return Principal{}, err
-	}
-	return principalForUser(user), nil
-}
-
-func (s *Service) UpdateOwnUser(ctx context.Context, actor Principal, input UpdateOwnUserInput) (Principal, error) {
-	if s.repo == nil {
-		return Principal{}, fmt.Errorf("authentication service is not configured")
-	}
-	if actor.IsZero() {
-		return Principal{}, ErrUnauthenticated
-	}
-	currentUser, err := s.repo.FindUserByID(ctx, actor.ID)
+	current, err := s.repo.FindAdministrator(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Principal{}, ErrUserNotFound
+		return Principal{}, ErrAdministratorNotFound
 	}
 	if err != nil {
 		return Principal{}, err
 	}
-	username := currentUser.Username
+	username := current.Username
 	if input.Username != nil {
 		username = strings.TrimSpace(*input.Username)
 		if username == "" {
-			return Principal{}, ErrInvalidUser
+			return Principal{}, ErrInvalidAdministrator
 		}
 	}
-	email := currentUser.Email
+	email := current.Email
 	if input.Email != nil {
 		email = strings.TrimSpace(*input.Email)
 	}
 	if input.Username == nil && input.Email == nil {
-		return principalForUser(currentUser), nil
+		return principalForAdministrator(current), nil
 	}
-	updatedUser, err := s.repo.UpdateUserProfile(ctx, actor.ID, username, email)
+	var updated User
+	err = s.withinMutation(ctx, func(txCtx context.Context) error {
+		var updateErr error
+		updated, updateErr = s.repo.UpdateAdministratorProfile(txCtx, username, email)
+		if updateErr != nil {
+			return updateErr
+		}
+		return s.recordActorAction(txCtx, actor.ActorRefCode(), "UPDATE", AdministratorRefCode, "SUCCESS", "update_administrator")
+	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return Principal{}, ErrUserNotFound
+		return Principal{}, ErrAdministratorNotFound
 	}
 	if err != nil {
 		return Principal{}, err
 	}
-	if err := s.recordAuthentication(ctx, actor.ID, "UPDATE", "SUCCESS", "update_own_user"); err != nil {
-		return Principal{}, err
-	}
-	return principalForUser(updatedUser), nil
+	return principalForAdministrator(updated), nil
 }
 
-func (s *Service) ChangeOwnPassword(ctx context.Context, actor Principal, input ChangeOwnPasswordInput) error {
-	if s.repo == nil {
-		return fmt.Errorf("authentication service is not configured")
-	}
-	if actor.IsZero() {
-		return ErrUnauthenticated
+func (s *Service) ChangeAdministratorPassword(ctx context.Context, actor Principal, input ChangeAdministratorPasswordInput) error {
+	if err := requireAdministrator(actor); err != nil {
+		return err
 	}
 	if strings.TrimSpace(input.NewPassword) == "" {
-		return ErrInvalidUser
+		return ErrInvalidAdministrator
 	}
-	user, err := s.repo.FindUserByID(ctx, actor.ID)
+	user, err := s.repo.FindAdministrator(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrUserNotFound
+		return ErrAdministratorNotFound
 	}
 	if err != nil {
 		return err
 	}
 	if !VerifyPassword(user.PasswordHash, input.CurrentPassword) {
-		_ = s.recordAuthentication(ctx, actor.ID, "UPDATE", "DENIED", "invalid_credentials")
+		_ = s.recordActorAction(ctx, actor.ActorRefCode(), "UPDATE", AdministratorRefCode, "DENIED", "invalid_credentials")
 		return ErrInvalidCredentials
 	}
 	passwordHash, err := HashPassword(input.NewPassword)
 	if err != nil {
 		return err
 	}
-	if _, err := s.repo.UpdateUserPassword(ctx, actor.ID, passwordHash); errors.Is(err, sql.ErrNoRows) {
-		return ErrUserNotFound
-	} else if err != nil {
-		return err
-	}
-	return s.recordAuthentication(ctx, actor.ID, "UPDATE", "SUCCESS", "change_own_password")
-}
-
-func (s *Service) ResetUserPassword(ctx context.Context, actor Principal, targetUserID int64, password string) error {
-	if s.repo == nil {
-		return fmt.Errorf("authentication service is not configured")
-	}
-	if actor.IsZero() {
-		return ErrUnauthenticated
-	}
-	if !actor.IsSuperuser() {
-		_ = s.recordAuthentication(ctx, actor.ID, "UPDATE", "DENIED", "forbidden")
-		return ErrForbidden
-	}
-	if targetUserID < 1 || strings.TrimSpace(password) == "" {
-		return ErrInvalidUser
-	}
-	targetUser, err := s.repo.FindUserByID(ctx, targetUserID)
+	err = s.withinMutation(ctx, func(txCtx context.Context) error {
+		if _, updateErr := s.repo.UpdateAdministratorPassword(txCtx, passwordHash); updateErr != nil {
+			return updateErr
+		}
+		return s.recordActorAction(txCtx, actor.ActorRefCode(), "UPDATE", AdministratorRefCode, "SUCCESS", "change_administrator_password")
+	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrUserNotFound
+		return ErrAdministratorNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if targetUser.Role == RoleSuperuser && targetUser.ID != actor.ID {
-		_ = s.recordAuthentication(ctx, actor.ID, "UPDATE", "DENIED", "target_superuser")
-		return ErrForbidden
-	}
-	passwordHash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
-	if _, err := s.repo.UpdateUserPassword(ctx, targetUserID, passwordHash); errors.Is(err, sql.ErrNoRows) {
-		return ErrUserNotFound
-	} else if err != nil {
-		return err
-	}
-	return s.recordAuthentication(ctx, actor.ID, "UPDATE", "SUCCESS", "reset_user_password")
+	return nil
 }
 
-func (s *Service) Authenticate(ctx context.Context, rawToken string) (Principal, error) {
-	if s.repo == nil || s.sessions == nil || s.tokens == nil {
+func (s *Service) CreateAPIKey(ctx context.Context, actor Principal, input CreateAPIKeyInput) (CreateAPIKeyResult, error) {
+	if err := requireAdministrator(actor); err != nil {
+		return CreateAPIKeyResult{}, err
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	input.Scopes = normalizeScopes(input.Scopes)
+	if !apiKeyNamePattern.MatchString(input.Name) || len(input.Scopes) == 0 || !validScopes(input.Scopes) {
+		return CreateAPIKeyResult{}, ErrInvalidAPIKey
+	}
+	now := s.now().UTC()
+	if input.ExpiresAt != nil {
+		expiresAt := input.ExpiresAt.UTC()
+		if !expiresAt.After(now) {
+			return CreateAPIKeyResult{}, ErrInvalidAPIKey
+		}
+		input.ExpiresAt = &expiresAt
+	}
+	refCode, plaintext, err := s.credential()
+	if err != nil {
+		return CreateAPIKeyResult{}, err
+	}
+	if !ValidAPIKeyRefCode(refCode) || !strings.HasPrefix(plaintext, apiKeySecretPrefix) || len(plaintext) <= len(apiKeySecretPrefix)+8 {
+		return CreateAPIKeyResult{}, ErrInvalidAPIKey
+	}
+	digest := sha256.Sum256([]byte(plaintext))
+	keyPrefix := plaintext
+	if len(keyPrefix) > len(apiKeySecretPrefix)+8 {
+		keyPrefix = keyPrefix[:len(apiKeySecretPrefix)+8]
+	}
+	var created APIKey
+	err = s.withinMutation(ctx, func(txCtx context.Context) error {
+		var createErr error
+		created, createErr = s.repo.CreateAPIKey(txCtx, CreateAPIKeyRecord{
+			RefCode: refCode, Name: input.Name, KeyPrefix: keyPrefix,
+			KeyHash: hex.EncodeToString(digest[:]), Scopes: input.Scopes, ExpiresAt: input.ExpiresAt,
+		})
+		if createErr != nil {
+			return createErr
+		}
+		return s.recordActorAction(txCtx, actor.ActorRefCode(), "CREATE", created.RefCode, "SUCCESS", "create_api_key")
+	})
+	if err != nil {
+		return CreateAPIKeyResult{}, err
+	}
+	return CreateAPIKeyResult{
+		RefCode: created.RefCode, Name: created.Name, APIKey: plaintext,
+		KeyPrefix: created.KeyPrefix, Scopes: created.Scopes, ExpiresAt: created.ExpiresAt,
+	}, nil
+}
+
+func (s *Service) ListAPIKeys(ctx context.Context, actor Principal) ([]APIKey, error) {
+	if err := requireAdministrator(actor); err != nil {
+		return nil, err
+	}
+	keys, err := s.repo.ListAPIKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UTC()
+	for index := range keys {
+		keys[index].Status = keys[index].EffectiveStatus(now)
+		keys[index].KeyHash = ""
+	}
+	return keys, nil
+}
+
+func (s *Service) RevokeAPIKey(ctx context.Context, actor Principal, refCode string) (APIKey, error) {
+	if err := requireAdministrator(actor); err != nil {
+		return APIKey{}, err
+	}
+	refCode = strings.ToUpper(strings.TrimSpace(refCode))
+	if !ValidAPIKeyRefCode(refCode) {
+		return APIKey{}, ErrInvalidAPIKey
+	}
+	var key APIKey
+	err := s.withinMutation(ctx, func(txCtx context.Context) error {
+		var revokeErr error
+		key, revokeErr = s.repo.RevokeAPIKey(txCtx, refCode)
+		if revokeErr != nil {
+			return revokeErr
+		}
+		return s.recordActorAction(txCtx, actor.ActorRefCode(), "UPDATE", key.RefCode, "SUCCESS", "revoke_api_key")
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return APIKey{}, ErrAPIKeyNotFound
+	}
+	if err != nil {
+		return APIKey{}, err
+	}
+	key.Status = APIKeyStatusRevoked
+	key.KeyHash = ""
+	return key, nil
+}
+
+func (s *Service) Authenticate(ctx context.Context, rawCredential string) (Principal, error) {
+	if s.repo == nil {
+		return Principal{}, ErrUnauthenticated
+	}
+	if strings.HasPrefix(rawCredential, apiKeySecretPrefix) {
+		return s.authenticateAPIKey(ctx, rawCredential)
+	}
+	return s.authenticateAdministratorSession(ctx, rawCredential)
+}
+
+func (s *Service) authenticateAdministratorSession(ctx context.Context, rawToken string) (Principal, error) {
+	if s.sessions == nil || s.tokens == nil {
 		return Principal{}, ErrUnauthenticated
 	}
 	claims, err := s.tokens.Verify(rawToken)
@@ -249,11 +321,27 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (Principal,
 	if err != nil || !active {
 		return Principal{}, ErrUnauthenticated
 	}
-	user, err := s.repo.FindUserByID(ctx, claims.UserID)
+	user, err := s.repo.FindAdministratorByRefCode(ctx, claims.RefCode)
 	if err != nil {
 		return Principal{}, ErrUnauthenticated
 	}
-	return principalForUser(user), nil
+	return principalForAdministrator(user), nil
+}
+
+func (s *Service) authenticateAPIKey(ctx context.Context, plaintext string) (Principal, error) {
+	digest := sha256.Sum256([]byte(plaintext))
+	key, err := s.repo.UseAPIKey(ctx, hex.EncodeToString(digest[:]))
+	if err != nil {
+		return Principal{}, ErrUnauthenticated
+	}
+	administrator, err := s.repo.FindAdministrator(ctx)
+	if err != nil {
+		return Principal{}, ErrUnauthenticated
+	}
+	return Principal{
+		ID: administrator.ID, RefCode: key.RefCode, Kind: PrincipalKindAPIKey,
+		Name: key.Name, Scopes: slices.Clone(key.Scopes),
+	}, nil
 }
 
 func (s *Service) Logout(ctx context.Context, rawToken string) error {
@@ -265,55 +353,99 @@ func (s *Service) Logout(ctx context.Context, rawToken string) error {
 		return ErrUnauthenticated
 	}
 	if err := s.sessions.Delete(ctx, claims.TokenID); err != nil {
-		_ = s.recordAuthentication(ctx, claims.UserID, "LOGOUT", "FAILED", "session_delete_failed")
+		_ = s.recordAuthentication(ctx, claims.RefCode, "LOGOUT", "FAILED", "session_delete_failed")
 		return err
 	}
-	return s.recordAuthentication(ctx, claims.UserID, "LOGOUT", "SUCCESS", "")
+	return s.recordAuthentication(ctx, claims.RefCode, "LOGOUT", "SUCCESS", "")
 }
 
-func (s *Service) recordAuthentication(ctx context.Context, actorUserID int64, action string, result string, reason string) error {
+func (s *Service) recordAuthentication(ctx context.Context, actorRefCode string, action string, result string, reason string) error {
 	if s.audit == nil {
 		return nil
 	}
-	return s.audit.RecordAuthentication(ctx, actorUserID, action, result, reason)
+	return s.audit.RecordAuthentication(ctx, actorRefCode, action, result, reason)
 }
 
-func EnsureDevelopmentAdmin(ctx context.Context, repo UserInitializer) error {
+func (s *Service) recordActorAction(ctx context.Context, actorRefCode string, action string, targetRefCode string, result string, reason string) error {
+	if s.audit == nil {
+		return nil
+	}
+	return s.audit.RecordActorAction(ctx, actorRefCode, action, targetRefCode, result, reason)
+}
+
+func (s *Service) withinMutation(ctx context.Context, operation func(context.Context) error) error {
+	if s.transactions == nil {
+		return operation(ctx)
+	}
+	return s.transactions.WithinTransaction(ctx, operation)
+}
+
+func EnsureDevelopmentAdmin(ctx context.Context, repo AdministratorInitializer) error {
 	if repo == nil {
-		return errors.New("auth user initializer is required")
+		return errors.New("auth administrator initializer is required")
 	}
 	passwordHash, err := HashPassword("admin")
 	if err != nil {
-		return fmt.Errorf("hash development admin password: %w", err)
+		return fmt.Errorf("hash development administrator password: %w", err)
 	}
-	if err := repo.CreateUserIfMissing(ctx, "admin", RoleSuperuser, passwordHash); err != nil {
-		return fmt.Errorf("create development admin: %w", err)
+	if err := repo.CreateAdministratorIfMissing(ctx, "admin", passwordHash); err != nil {
+		return fmt.Errorf("create development administrator: %w", err)
 	}
 	return nil
 }
 
-func normalizeCreateUserInput(input CreateUserInput) (CreateUserInput, error) {
-	input.Username = strings.TrimSpace(input.Username)
-	input.Email = strings.TrimSpace(input.Email)
-	if input.Username == "" || strings.TrimSpace(input.Password) == "" {
-		return CreateUserInput{}, ErrInvalidUser
+func principalForAdministrator(user User) Principal {
+	return Principal{
+		ID: user.ID, RefCode: user.RefCode, Kind: PrincipalKindAdministrator,
+		Username: user.Username, Email: user.Email,
 	}
-	if input.Role == "" {
-		input.Role = RoleUser
-	}
-	switch input.Role {
-	case RoleUser:
-	default:
-		return CreateUserInput{}, ErrInvalidUser
-	}
-	return input, nil
 }
 
-func principalForUser(user User) Principal {
-	return Principal{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Role:     user.Role,
+func requireAdministrator(actor Principal) error {
+	if actor.IsZero() {
+		return ErrUnauthenticated
 	}
+	if !actor.IsAdministrator() || actor.ActorRefCode() != AdministratorRefCode {
+		return ErrForbidden
+	}
+	return nil
 }
+
+func normalizeScopes(scopes []ScopeName) []ScopeName {
+	unique := make(map[ScopeName]struct{}, len(scopes))
+	for _, scope := range scopes {
+		value := ScopeName(strings.TrimSpace(string(scope)))
+		if value != "" {
+			unique[value] = struct{}{}
+		}
+	}
+	result := make([]ScopeName, 0, len(unique))
+	for scope := range unique {
+		result = append(result, scope)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+func validScopes(scopes []ScopeName) bool {
+	for _, scope := range scopes {
+		if !slices.Contains(SupportedAPIKeyScopes, scope) {
+			return false
+		}
+	}
+	return true
+}
+
+func generateAPIKeyCredential() (string, string, error) {
+	var refBytes [4]byte
+	if _, err := rand.Read(refBytes[:]); err != nil {
+		return "", "", fmt.Errorf("generate api key refcode: %w", err)
+	}
+	var secretBytes [32]byte
+	if _, err := rand.Read(secretBytes[:]); err != nil {
+		return "", "", fmt.Errorf("generate api key secret: %w", err)
+	}
+	return "KEY-" + strings.ToUpper(hex.EncodeToString(refBytes[:])), apiKeySecretPrefix + base64.RawURLEncoding.EncodeToString(secretBytes[:]), nil
+}
+
+const SystemActorRefCode = "SYS-00000000"

@@ -24,6 +24,21 @@ func AuthenticateBearer(service *Service, next http.Handler) http.Handler {
 	})
 }
 
+func RequireScope(scope ScopeName, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := PrincipalFromContext(r.Context())
+		if !ok {
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required")
+			return
+		}
+		if !principal.Allows(scope) {
+			httpx.WriteError(w, http.StatusForbidden, "insufficient_scope", "The credential does not allow this operation")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func BearerToken(r *http.Request) (string, error) {
 	parts := strings.Fields(r.Header.Get("Authorization"))
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {

@@ -28,14 +28,15 @@ func (a *App) registerRoutes() {
 	authRoutes := a.Router.Group("/api/auth")
 	authRoutes.POST("/login", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.Login)))
 
-	authenticatedAPI := a.Router.Group("/api", authenticateBearer(a.Auth))
+	authenticatedAPI := a.Router.Group("/api", authenticateBearer(a.Auth), authorizeCredentialScope())
 
 	authenticatedAuthRoutes := authenticatedAPI.Group("/auth")
 	registerGETAndHEAD(authenticatedAuthRoutes, "/me", http.HandlerFunc(a.AuthHTTP.Me))
 	authenticatedAuthRoutes.PATCH("/me", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.UpdateMe)))
 	authenticatedAuthRoutes.PATCH("/me/password", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.ChangeOwnPassword)))
-	authenticatedAuthRoutes.POST("/users", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.CreateUser)))
-	authenticatedAuthRoutes.PATCH("/users/:id/password", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.ResetUserPassword)))
+	registerGETAndHEAD(authenticatedAuthRoutes, "/api-keys", http.HandlerFunc(a.AuthHTTP.ListAPIKeys))
+	authenticatedAuthRoutes.POST("/api-keys", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.CreateAPIKey)))
+	authenticatedAuthRoutes.POST("/api-keys/:refcode/revoke", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.RevokeAPIKey)))
 	authenticatedAuthRoutes.POST("/logout", adaptHTTPHandler(http.HandlerFunc(a.AuthHTTP.Logout)))
 
 	registerGETAndHEAD(authenticatedAPI, "/events", a.Events)
@@ -127,6 +128,28 @@ func authenticateBearer(service *auth.Service) gin.HandlerFunc {
 		}
 
 		c.Request = authenticatedRequest
+		c.Next()
+	}
+}
+
+func authorizeCredentialScope() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/auth/") || c.Request.URL.Path == "/api/platform/audit-logs" {
+			c.Next()
+			return
+		}
+		requiredScope := auth.ScopeDataWrite
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead || c.Request.URL.Path == "/api/platform/object-refs/search" {
+			requiredScope = auth.ScopeDataRead
+		}
+		var authorizedRequest *http.Request
+		auth.RequireScope(requiredScope, http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			authorizedRequest = request
+		})).ServeHTTP(c.Writer, c.Request)
+		if authorizedRequest == nil {
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

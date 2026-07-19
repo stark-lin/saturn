@@ -92,8 +92,8 @@ func NewService(deps ServiceDependencies) *Service {
 }
 
 func (s *Service) ListSessions(ctx context.Context, actor auth.Principal, limit int, offset int) (SessionPage, error) {
-	if actor.IsZero() {
-		return SessionPage{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "llm_session"}); err != nil {
+		return SessionPage{}, err
 	}
 	if s.repo == nil {
 		return SessionPage{}, ErrRepositoryUnavailable
@@ -106,8 +106,8 @@ func (s *Service) ListSessions(ctx context.Context, actor auth.Principal, limit 
 }
 
 func (s *Service) CreateSession(ctx context.Context, actor auth.Principal, input CreateSessionInput) (Session, error) {
-	if actor.IsZero() {
-		return Session{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionCreate, auth.Resource{Type: "llm_session"}); err != nil {
+		return Session{}, err
 	}
 	input, err := normalizeSessionInput(input)
 	if err != nil {
@@ -134,7 +134,7 @@ func (s *Service) CreateSession(ctx context.Context, actor auth.Principal, input
 			return err
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: object.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -152,8 +152,8 @@ func (s *Service) CreateSession(ctx context.Context, actor auth.Principal, input
 }
 
 func (s *Service) GetSession(ctx context.Context, actor auth.Principal, refCode string, limit int, offset int) (SessionDetail, error) {
-	if actor.IsZero() {
-		return SessionDetail{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "llm_session"}); err != nil {
+		return SessionDetail{}, err
 	}
 	if s.repo == nil {
 		return SessionDetail{}, ErrRepositoryUnavailable
@@ -175,8 +175,8 @@ func (s *Service) GetSession(ctx context.Context, actor auth.Principal, refCode 
 }
 
 func (s *Service) GetRequest(ctx context.Context, actor auth.Principal, refCode string) (Request, error) {
-	if actor.IsZero() {
-		return Request{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionRead, auth.Resource{Type: "llm_request"}); err != nil {
+		return Request{}, err
 	}
 	if s.repo == nil {
 		return Request{}, ErrRepositoryUnavailable
@@ -186,8 +186,8 @@ func (s *Service) GetRequest(ctx context.Context, actor auth.Principal, refCode 
 }
 
 func (s *Service) CreateRequest(ctx context.Context, actor auth.Principal, sessionRefCode string, input CreateRequestInput) (Request, error) {
-	if actor.IsZero() {
-		return Request{}, auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionCreate, auth.Resource{Type: "llm_request"}); err != nil {
+		return Request{}, err
 	}
 	if err := s.requireRequestDependencies(); err != nil {
 		return Request{}, err
@@ -232,7 +232,7 @@ func (s *Service) CreateRequest(ctx context.Context, actor auth.Principal, sessi
 			return err
 		}
 		createdRequest, err := s.repo.CreateRequest(txCtx, lockedSession.OwnerID, lockedSession.ID, PersistedRequestInput{
-			ActorUserID: actor.ID, Prompt: input.Prompt, Model: input.Model, MaxTokens: input.MaxTokens,
+			ActorRefCode: actor.ActorRefCode(), Prompt: input.Prompt, Model: input.Model, MaxTokens: input.MaxTokens,
 			ContextJSON: contextJSON, RequestJSON: requestJSON,
 		})
 		if err != nil {
@@ -257,7 +257,7 @@ func (s *Service) CreateRequest(ctx context.Context, actor auth.Principal, sessi
 			createdRequest.References = append(createdRequest.References, storedReference)
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionCreate,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionCreate,
 			TargetRefCode: createdRequest.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -295,11 +295,11 @@ func (s *Service) ProcessNextQueuedRequest(ctx context.Context, requestTimeout t
 	if err != nil {
 		return false, err
 	}
-	_, err = s.completeRequestResponse(ctx, request.ActorUserID, request, requestTimeout)
+	_, err = s.completeRequestResponse(ctx, request.ActorRefCode, request, requestTimeout)
 	return true, err
 }
 
-func (s *Service) completeRequestResponse(ctx context.Context, actorUserID int64, request Request, requestTimeout time.Duration) (Response, error) {
+func (s *Service) completeRequestResponse(ctx context.Context, actorRefCode string, request Request, requestTimeout time.Duration) (Response, error) {
 	input := CompleteResponseInput{Status: ResponseStatusError, ErrorCode: "llm_unavailable", ErrorMessage: ErrClientUnavailable.Error(), ResponseJSON: json.RawMessage(`{}`)}
 	if s.config.Enabled && s.client != nil {
 		providerCtx := ctx
@@ -349,7 +349,7 @@ func (s *Service) completeRequestResponse(ctx context.Context, actorUserID int64
 			reason = completed.ErrorCode
 		}
 		_, err = s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actorUserID, Action: audit.ActionUpdate,
+			ActorRefCode: actorRefCode, Action: audit.ActionUpdate,
 			TargetRefCode: request.RefCode, Result: result, Reason: reason,
 			SourceIP: "127.0.0.1", UserAgent: "saturn-llm-worker",
 		})
@@ -363,8 +363,8 @@ func providerTimedOut(ctx context.Context, err error) bool {
 }
 
 func (s *Service) DeleteSession(ctx context.Context, actor auth.Principal, refCode string) error {
-	if actor.IsZero() {
-		return auth.ErrUnauthenticated
+	if err := s.authorizer.Can(actor, auth.ActionDelete, auth.Resource{Type: "llm_session"}); err != nil {
+		return err
 	}
 	if err := s.requireWriteDependencies(); err != nil {
 		return err
@@ -384,14 +384,14 @@ func (s *Service) DeleteSession(ctx context.Context, actor auth.Principal, refCo
 		}
 		for _, request := range requests {
 			if _, err := s.audit.Record(txCtx, audit.Event{
-				ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+				ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 				TargetRefCode: request.RefCode, Result: audit.ResultSuccess, Reason: "cascade_llm_session",
 			}); err != nil {
 				return err
 			}
 		}
 		if _, err := s.audit.Record(txCtx, audit.Event{
-			ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: audit.ActionDelete,
+			ActorRefCode: actor.ActorRefCode(), Action: audit.ActionDelete,
 			TargetRefCode: session.RefCode, Result: audit.ResultSuccess,
 		}); err != nil {
 			return err
@@ -421,10 +421,10 @@ func (s *Service) resolveReferences(ctx context.Context, actor auth.Principal, r
 		}
 		reference, err := s.resolver.Resolve(ctx, actor, code)
 		if err != nil {
-			_ = s.recordLLMRead(ctx, code, audit.ResultDenied, "not_found")
+			_ = s.recordLLMRead(ctx, actor, code, audit.ResultDenied, "not_found")
 			return nil, errors.Join(ErrReferenceNotFound, err)
 		}
-		if err := s.recordLLMRead(ctx, code, audit.ResultSuccess, ""); err != nil {
+		if err := s.recordLLMRead(ctx, actor, code, audit.ResultSuccess, ""); err != nil {
 			return nil, err
 		}
 		resolved = append(resolved, reference)
@@ -432,12 +432,12 @@ func (s *Service) resolveReferences(ctx context.Context, actor auth.Principal, r
 	return resolved, nil
 }
 
-func (s *Service) recordLLMRead(ctx context.Context, refCode string, result audit.Result, reason string) error {
+func (s *Service) recordLLMRead(ctx context.Context, actor auth.Principal, refCode string, result audit.Result, reason string) error {
 	if s.audit == nil {
 		return ErrDependencyUnavailable
 	}
 	return s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeLLM, Action: audit.ActionRead,
+		ActorRefCode: actor.ActorRefCode(), Action: audit.ActionRead,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 }
@@ -454,7 +454,7 @@ func (s *Service) recordWriteFailure(ctx context.Context, actor auth.Principal, 
 		reason = "not_found"
 	}
 	auditErr := s.audit.RecordStandalone(ctx, audit.Event{
-		ActorType: audit.ActorTypeUser, ActorUserID: actor.ID, Action: action,
+		ActorRefCode: actor.ActorRefCode(), Action: action,
 		TargetRefCode: refCode, Result: result, Reason: reason,
 	})
 	if auditErr != nil {

@@ -23,7 +23,7 @@ func TestNewModuleBuildsAccountingDependencies(t *testing.T) {
 
 func TestServiceCreatesAccountAndTransactionUsingAccountingRefsAndCachedBalance(t *testing.T) {
 	service, repo, references, audits := newTestService()
-	actor := auth.Principal{ID: 7, Role: auth.RoleUser}
+	actor := auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}
 
 	account, err := service.CreateAccount(context.Background(), actor, CreateAccountInput{
 		Name: "Wallet", Type: AccountTypeCash, Currency: "aud", OpeningBalanceCents: 1000,
@@ -88,7 +88,7 @@ func TestServiceVoidsTransactionAndExcludesItFromBalance(t *testing.T) {
 		AmountCents: -250, Title: "Lunch", Status: TransactionStatusPosted,
 	}
 
-	transaction, err := service.VoidTransaction(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, "ACC-00000002")
+	transaction, err := service.VoidTransaction(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, "ACC-00000002")
 	if err != nil {
 		t.Fatalf("void transaction: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestServiceVoidsTransactionAndExcludesItFromBalance(t *testing.T) {
 		t.Fatalf("void audit = %#v", audits.successes[0])
 	}
 
-	if _, err := service.VoidTransaction(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, "ACC-00000002"); !errors.Is(err, ErrTransactionAlreadyVoided) {
+	if _, err := service.VoidTransaction(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, "ACC-00000002"); !errors.Is(err, ErrTransactionAlreadyVoided) {
 		t.Fatalf("second void error = %v, want already voided", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestServiceDeletesLedgerAndAllTransactionReferences(t *testing.T) {
 	repo.transactions[2] = Transaction{ID: 2, OwnerID: 7, AccountID: 1, RefCode: "ACC-00000002"}
 	repo.transactions[3] = Transaction{ID: 3, OwnerID: 7, AccountID: 1, RefCode: "ACC-00000003"}
 
-	err := service.DeleteAccount(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, account.RefCode)
+	err := service.DeleteAccount(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, account.RefCode)
 	if err != nil {
 		t.Fatalf("delete account: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestServiceDeletesLedgerAndAllTransactionReferences(t *testing.T) {
 
 func TestServiceRejectsIncorrectSignedTransactionAmount(t *testing.T) {
 	service, _, _, _ := newTestService()
-	_, err := service.CreateTransaction(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateTransactionInput{
+	_, err := service.CreateTransaction(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateTransactionInput{
 		AccountRefCode: "ACC-00000001",
 		OccurredOn:     time.Now(),
 		Kind:           TransactionKindExpense,
@@ -154,7 +154,7 @@ func TestServiceRejectsIncorrectSignedTransactionAmount(t *testing.T) {
 
 func TestServiceRejectsInvalidCurrencyBeforeWrite(t *testing.T) {
 	service, _, _, _ := newTestService()
-	_, err := service.CreateAccount(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, CreateAccountInput{
+	_, err := service.CreateAccount(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, CreateAccountInput{
 		Name: "Wallet", Currency: "A$D",
 	})
 	if !errors.Is(err, ErrInvalidAccount) {
@@ -173,20 +173,20 @@ func TestServiceListAndGetNormalizeQueriesAndRefCodes(t *testing.T) {
 	repo.storeAccount(account)
 	repo.transactions[transaction.ID] = transaction
 
-	accounts, err := service.ListAccounts(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, AccountQuery{})
+	accounts, err := service.ListAccounts(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, AccountQuery{})
 	if err != nil {
 		t.Fatalf("list accounts: %v", err)
 	}
 	if accounts.Limit != DefaultLimit || repo.lastAccountQuery.Limit != DefaultLimit {
 		t.Fatalf("account query = page %#v repo %#v", accounts, repo.lastAccountQuery)
 	}
-	gotAccount, err := service.GetAccount(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, " acc-00000001 ")
+	gotAccount, err := service.GetAccount(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, " acc-00000001 ")
 	if err != nil || gotAccount.RefCode != account.RefCode {
 		t.Fatalf("get account = %#v error = %v", gotAccount, err)
 	}
 
 	from := time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
-	transactions, err := service.ListTransactions(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, TransactionQuery{
+	transactions, err := service.ListTransactions(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, TransactionQuery{
 		AccountRefCode: " acc-00000001 ", Status: TransactionStatusPosted, Tag: " food ", From: &from, Limit: 4,
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestServiceListAndGetNormalizeQueriesAndRefCodes(t *testing.T) {
 		repo.lastTransactionQuery.Tag != "food" {
 		t.Fatalf("transaction query = page %#v repo %#v", transactions, repo.lastTransactionQuery)
 	}
-	gotTransaction, err := service.GetTransaction(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, " acc-00000002 ")
+	gotTransaction, err := service.GetTransaction(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, " acc-00000002 ")
 	if err != nil || gotTransaction.RefCode != transaction.RefCode {
 		t.Fatalf("get transaction = %#v error = %v", gotTransaction, err)
 	}
@@ -205,12 +205,12 @@ func TestServiceListAndGetNormalizeQueriesAndRefCodes(t *testing.T) {
 
 func TestServiceRejectsInvalidListQueries(t *testing.T) {
 	service, _, _, _ := newTestService()
-	if _, err := service.ListAccounts(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, AccountQuery{Limit: MaxLimit + 1}); !errors.Is(err, ErrInvalidQuery) {
+	if _, err := service.ListAccounts(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, AccountQuery{Limit: MaxLimit + 1}); !errors.Is(err, ErrInvalidQuery) {
 		t.Fatalf("account query error = %v, want invalid query", err)
 	}
 	to := time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
 	from := to.AddDate(0, 0, 1)
-	if _, err := service.ListTransactions(context.Background(), auth.Principal{ID: 7, Role: auth.RoleUser}, TransactionQuery{
+	if _, err := service.ListTransactions(context.Background(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}, TransactionQuery{
 		Status: "archived", From: &from, To: &to,
 	}); !errors.Is(err, ErrInvalidQuery) {
 		t.Fatalf("transaction query error = %v, want invalid query", err)

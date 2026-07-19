@@ -1,132 +1,84 @@
-# PERMISSION.md
+# Saturn Authentication and Permission Model
 
-## 1. Goal
+## 1. Instance Model
 
-This document records Saturn's permission model. For detailed execution conventions, refer to `docs/FILES.md`.
-
----
-
-## 2. Roles
+Saturn is a single-instance system with exactly one human administrator and any number of named API keys.
 
 ```text
-superuser
-user
+administrator  USR-00000001
+API key        KEY-xxxxxxxx
+system         SYS-00000000
 ```
 
-The `superuser` is the instance owner. A `user` is an ordinary user and only possesses a proper subset of the capabilities of a superuser.
+There is no registration, invitation, user list, user role, resource sharing, or user-to-user data isolation. All business data belongs to the Saturn instance. Existing `owner_id` columns are internal relational anchors to the singleton administrator row; they are not ownership or authorization boundaries and are never compared with a programmatic caller identity.
 
-The system does not implement tenants, workspaces, or organizations.
+## 2. Administrator Authentication
 
-The authentication entry point uses a unique `username` and a password; `email` can be null and is not involved in login. An `admin/admin` `superuser` account is created when the development environment is started.
+The administrator signs in to the Web UI with the unique username and password. The development bootstrap creates `admin/admin` only when the singleton row does not exist. Production deployments must change this password and the JWT secret.
 
-Account management rules:
+Successful login returns a short-lived JWT. The JWT subject is the fixed administrator RefCode, not a database ID or role. Redis stores the active browser-session token ID; logout removes it. Administrator responses expose:
+
+```json
+{
+  "refcode": "USR-00000001",
+  "kind": "administrator",
+  "username": "admin"
+}
+```
+
+The administrator may update only this account's username, optional email, and password. No endpoint can create another human account.
+
+## 3. API Key Authentication
+
+Programmatic clients use:
+
+```http
+Authorization: Bearer sat_sk_<secret>
+```
+
+The server generates the secret and returns it exactly once. PostgreSQL stores only its SHA-256 digest and a non-secret display prefix. A key is rejected when it is unknown, revoked, or expired. Successful authentication updates `last_used_at` and creates a principal whose data anchor is the singleton administrator ID but whose actor identity is the key's own `KEY-*` RefCode.
+
+Supported scopes:
+
+| Scope | Capability |
+| --- | --- |
+| `data:read` | Read instance business data, ObjectRef metadata, search, downloads, and SSE |
+| `data:write` | Create, update, void, finish, or delete instance business data; also implies `data:read` |
+
+API keys cannot modify the administrator account, manage API keys, query audit logs, or log out browser sessions. Those are administrator-only operations.
+
+API key names use `^[a-z0-9][a-z0-9._-]{0,63}$`, are unique for the lifetime of the instance, and cannot be changed or reused after revocation. Keys are never physically deleted. PostgreSQL triggers enforce immutable key identity, irreversible revocation, monotonic last-use timestamps, and the no-delete rule even for direct SQL writes.
+
+## 4. Business Resource Access
+
+Every authenticated principal with the required scope operates on shared instance data. Service authorization checks action scope, not `owner_id`, role, sharing rows, or status. Repositories still accept fixed `auth.Scope` values so authorization does not generate SQL; production business reads receive `Scope{All: true}`.
+
+Resource state remains a business rule. For example, `voided`, `finished`, and immutable objects retain their module-specific transition restrictions, but state never grants additional access.
+
+## 5. Audit Identity
+
+Audit rows and business source fields store a stable actor RefCode only:
 
 ```text
-superuser can create user accounts
-the public account creation API does not provide superuser creation
-user can update only their own username and email
-superuser can update only their own username and email through the current-user profile endpoint
-user can change their own password after verifying the current password
-superuser can reset their own password
-superuser can reset user role account passwords
-superuser cannot reset another superuser's password if legacy or manually modified data contains more than one superuser
-user cannot create accounts, change roles, or reset another account's password
+USR-00000001  administrator action
+KEY-4F8A2C10   API key action
+SYS-00000000   system or unidentified authentication action
 ```
 
----
+`audit_logs.actor_ref_code` replaces actor type plus numeric user ID. `llm_requests.actor_ref_code` records the principal that submitted the request. Names are resolved for display from their domain objects and are not copied into audit history.
 
-## 3. Object Status And Access
+Audit logs are append-only and administrator-readable. Failed login attempts use `SYS-00000000` because no caller identity has been authenticated. API key secrets, bearer headers, passwords, and raw content must never enter logs or audit reasons.
+
+## 6. Ops UI Boundary
+
+The settings UI is an administrator aggregation layer. It reuses the normal Auth and Audit services to:
 
 ```text
-object_refs.status stores the current status projection for registered objects
-object_refs.title, object_refs.tags and object_refs.status are metadata projections associated with the registered ref_code
-the owning business module defines status values and transition rules
-title, tags and status are metadata and do not grant access
+inspect the singleton administrator
+change its password
+create/list/revoke API keys
+query append-only audit logs
+end the current browser session
 ```
 
-Default scopes:
-
-```text
-superuser: all
-owner: owner_id = actor_id
-shared: exists explicit share row where the owning module defines sharing
-```
-
-Notes owner-only exception:
-
-```text
-The current Notes API only allows the actor to create, read, modify, or permanently delete logical Notes they own.
-The same owner-only rule applies to immutable version listing and independent version reads; the Notes API does not apply shared scopes and does not allow superusers to access another owner's Notes or versions.
-Logical Notes use `status = "draft"`; version objects use `status = "immutable"`. Status never grants access. Hard deletion removes the logical and version ObjectRefs, and no restore path exists.
-When a resource does not exist or does not belong to the current owner, it uniformly returns HTTP 404 / code "not_found".
-```
-
----
-
-## 4. Execution Locations
-
-```text
-middleware: authentication and route-level guard
-handler: bind input, read Principal, call service, write response
-service: business rules, resource-level authorization, audit
-repo: data access only
-```
-
-`platform/auth` returns authorization decisions or scopes; it does not generate business SQL.
-
-Module repos translate scopes into module-specific fixed, parameterized SQL.
-
-External response rules:
-
-```text
-resource not found -> HTTP 404 / code "not_found"
-resource access denied -> HTTP 404 / code "not_found"
-```
-
-Resource-level access denial does not return 403 or `access_denied` externally, avoiding the leakage of resource existence. Internal services can retain explicit authorization decisions, which handlers fold into "not found" when writing responses according to API contracts.
-
----
-
-## 5. Ops UI
-
-The Ops UI is an aggregation entry point for superusers; it does not possess independent privileged business paths.
-
-When operating on business resources, the Ops UI must:
-
-```text
-create or read superuser Principal
-call the same exported service / facade as normal flows
-reuse service-level authorization and audit
-avoid direct repo / Redis / DB driver access
-```
-
----
-
-## 7. Platform Search
-
-Platform search must apply auth scope before returning results.
-
-Search contributor / facade must not return resources that the current actor cannot read.
-
-Owner-only reference metadata responses may return ref_code, title, tags and status only after the object scope has been authorized.
-
----
-
-## 8. Audit Logs
-
-```text
-only superuser can list or filter all audit_logs rows
-ordinary users have no audit log query endpoint access
-the audit query itself does not create a READ audit row
-only LLM-originated resource reads use audit action READ
-audit_logs is append-only: application behavior may INSERT or SELECT, never UPDATE, DELETE or TRUNCATE
-```
-
-Audit write transaction rules:
-
-```text
-successful business mutations insert SUCCESS audit rows inside the same PostgreSQL transaction
-if that transaction fails or rolls back, no SUCCESS row is retained
-after a failed or denied outcome is known, FAILED or DENIED is inserted in a new audit-only PostgreSQL transaction
-LOGIN and LOGOUT target SYS-00000000 because they are system-level operations
-```
+It does not own privileged business paths or bypass module services.

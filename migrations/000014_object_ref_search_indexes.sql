@@ -1,4 +1,4 @@
--- This migration adds indexes for owner-only object reference search filters.
+-- This migration indexes ObjectRef searches by the singleton administrator anchor.
 CREATE INDEX idx_object_refs_owner_created
 ON object_refs (owner_id, created_at DESC, ref_code DESC);
 

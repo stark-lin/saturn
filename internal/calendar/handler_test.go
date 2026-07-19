@@ -373,7 +373,7 @@ func (s *fakeEventService) VoidEvent(_ context.Context, _ auth.Principal, _ stri
 
 func authenticatedCalendarRequest(method string, target string, body string) *http.Request {
 	request := httptest.NewRequest(method, target, bytes.NewBufferString(body))
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }
 
 func authenticatedICSMultipartRequest(t *testing.T, title string, body string) *http.Request {
@@ -395,5 +395,5 @@ func authenticatedICSMultipartRequest(t *testing.T, title string, body string) *
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/calendar/aggregates/import-ics", &requestBody)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, Role: auth.RoleUser}))
+	return request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{ID: 7, RefCode: auth.AdministratorRefCode, Kind: auth.PrincipalKindAdministrator}))
 }

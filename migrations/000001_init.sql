@@ -9,6 +9,7 @@ DROP FUNCTION IF EXISTS reject_llm_request_mutation();
 DROP FUNCTION IF EXISTS reject_llm_response_delete();
 DROP FUNCTION IF EXISTS reject_llm_response_update();
 DROP FUNCTION IF EXISTS reject_audit_log_mutation();
+DROP FUNCTION IF EXISTS enforce_api_key_lifecycle();
+DROP TYPE IF EXISTS audit_actor_type;
 DROP TYPE IF EXISTS audit_result;
 DROP TYPE IF EXISTS audit_action;
-DROP TYPE IF EXISTS audit_actor_type;

@@ -1,4 +1,4 @@
-// This file exposes the owner-only reference metadata endpoint for global search.
+// This file exposes shared-instance reference metadata endpoints for global search.
 package search
 
 import (
