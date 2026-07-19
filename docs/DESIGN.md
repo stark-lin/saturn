@@ -142,8 +142,7 @@ Recommended density:
 | panel / card / section surface padding | `--space-4` |
 | Sibling panel gap | `--space-4` |
 | Padding of boxes within the main page area | `--space-4` |
-| Gap between modules in the main View | `--space-4` only |
-| Large gap within a module | `--space-6` / `--space-7` / `--space-8`, only when structurally necessary |
+| Large section gap | `--space-6` / `--space-7` / `--space-8` |
 | Table header height | `32px` |
 | Table row height | `40px` |
 | Standard button height | `32px` |
@@ -153,7 +152,6 @@ Rules:
 * Do not randomly write temporary values like `margin: 13px`, `padding: 18px`, `gap: 20px` within components.
 * Page and component `padding`, `margin`, `gap`, `top` / `left` whitespace layouts must use spacing tokens or be calculated by combining spacing tokens.
 * Bordered content boxes, including panel, card, stat, form, detail, empty state, and preview, use `--space-4` (16px) uniformly for internal padding.
-* The gap between modules in the main View is always `--space-4` (16px). It must not increase based on page type, module level, or visual weight.
 * Special visual lines, borders, and focus rings can use non-spacing token values like `1px` or `2px`.
 * Control heights, icon sizes, border radii, decorative dots, and illustration sizes do not belong to the spacing scale but should be managed by their respective semantic tokens.
 * Horizontal and vertical page whitespace is controlled by semantic tokens and is not manually adjusted repeatedly in each module.
@@ -176,8 +174,7 @@ Components must first adhere to density contracts before module variations.
   --panel-padding: var(--space-4);
   --panel-gap: var(--space-4);
   --section-gap: var(--space-4);
-  --module-gap: var(--space-4);
-  --layout-gap: var(--module-gap);
+  --layout-gap: var(--space-6);
   --field-gap: var(--space-2);
   --field-stack-gap: var(--space-4);
 
@@ -191,245 +188,55 @@ Component rules:
 
 * Button: Use `--button-h` for height, `--space-3` for horizontal padding, `--text-xs` for font size, short verbs uppercase.
 * Input / Select: Use `--control-h-md` for height, `--space-3` for horizontal padding, `--text-sm` or `--text-md` for font size.
-* Panel / Card / Stat / Detail: padding uses `--panel-padding` or `--page-padding`, both mapping to `--space-4` (16px). These surface types do not justify nesting cards inside cards.
+* Panel / Card / Stat / Detail: padding uses `--panel-padding` or `--page-padding`, both mapping to `--space-4` (16px).
 * Table: header height uses `--table-head-h`, row height uses `--table-row-h`; headers use mono uppercase, data columns choose sans or mono based on data type.
 * Status / Chip: Used for short metadata, not to carry long sentences; height and padding must be stable and cannot jump in layout due to content.
 
-### 3.5 Module-Level Breathing Room
+### 3.5 Module Page Layout
 
-SATURN borrows only the sense of breathing room that the Carbon Design System creates through module layout. It does not copy Carbon's component styling, visual language, or large-spacing system.
+Module pages uniformly use a small number of fixed layouts instead of reinventing typography for each page.
 
-SATURN does not rely on large areas of whitespace. Its breathing room comes from clear module boundaries, a stable main View structure, and a deliberately limited number of modules.
-
-#### 3.5.1 Module Gaps Are Always 16px
-
-Use a uniform `16px` gap between modules. Do not increase it based on page type, module level, or visual weight.
+Standard page structure:
 
 ```text
-Module A
-
-16px
-
-Module B
-
-16px
-
-Module C
+PageShell
+├── TopStatsGrid / Summary
+├── MainSplit / Primary work area + Detail or metadata panel
+└── ObjectList / PaginationBar / ActionBar
 ```
 
-Create breathing room by:
-
-* Limiting the number of modules visible in one screen.
-* Keeping each module's internal structure simple.
-* Establishing a clear primary-secondary hierarchy.
-* Avoiding excessive nesting.
-* Separating regions through alignment, boundaries, and background hierarchy.
-
-Do not create breathing room by increasing module gaps.
-
-#### 3.5.2 The Main View Contains Only 1, 2, or 4 Modules
-
-The main View may contain exactly:
-
-```text
-1 module
-2 modules
-4 modules
-```
-
-Three modules must never be placed side by side. Restricting the module count gives the main interface a stable, predictable rhythm and prevents the width imbalance, dispersed visual focus, and responsive degradation caused by three-column layouts.
-
-Allowed layouts:
-
-```text
-1 module
-
-|            Primary module            |
-```
-
-```text
-2 modules
-
-|       Module A       |       Module B       |
-```
-
-```text
-4 modules
-
-|     Module A     |     Module B     |
-|     Module C     |     Module D     |
-```
-
-Prohibited layout:
-
-```text
-|   Module A   |   Module B   |   Module C   |
-```
-
-#### 3.5.3 Each Module Has One Primary Layout Direction
-
-Every module must have one clear primary structure. Typical structures are:
-
-```text
-Module title
-Module description or actions
-Module body
-```
-
-or:
-
-```text
-Left-side labels / navigation
-Right-side main content
-```
-
-Do not combine several complex layouts inside one module, such as:
-
-* Multiple summary cards across the top.
-* A separate panel on the left.
-* Several parallel regions on the right.
-* More nested cards at the bottom.
-* Another card grid inside a card.
-
-A module should be close to:
-
-```text
-Section header
-----------------------------------------
-Main content
-```
-
-not:
-
-```text
-Card
-  Card
-    Card
-```
-
-#### 3.5.4 Do Not Nest Cards Indefinitely
-
-Express SATURN's module boundaries through the overall layout, not by placing cards inside cards.
-
-Modules may be distinguished through:
-
-* The fixed `16px` gap.
-* Dividers.
-* Background hierarchy.
-* Heading hierarchy.
-* Grid alignment.
-* Changes in content density.
-
-Do not add a separate card container around every content group unless a clear interaction or semantic requirement calls for it.
-
-#### 3.5.5 Breathing Room Comes from Quantity Control, Not Enlarged Whitespace
-
-SATURN may maintain a relatively high information density. Tables, fields, buttons, and action areas may be compact, but the main View must not contain too many modules competing for attention.
-
-```text
-Breathing room
-= fixed 16px module gaps
-+ controlled module count
-+ clear primary-secondary hierarchy
-+ one internal structure per module
-- three modules side by side
-- multi-level card nesting
-- meaningless large-area padding
-```
-
-#### 3.5.6 Recommended Main View Skeletons
-
-##### Single-Module View
-
-Use for object details, editors, tables, or a primary workspace.
-
-```text
-Page title area
-
-16px
-
-Primary module
-```
-
-##### Two-Module View
-
-Use when primary and supporting content need to appear side by side.
-
-```text
-Page title area
-
-16px
-
-| Primary module | Supporting module |
-```
-
-The modules may have equal widths or a clear primary-secondary ratio, but the layout must not be split into a third column.
-
-##### Four-Module View
-
-Use for status overviews, system control areas, or a fixed four-quadrant layout.
-
-```text
-Page title area
-
-16px
-
-| Module A | Module B |
-
-16px
-
-| Module C | Module D |
-```
-
-Keep the complete `2 x 2` structure. Do not degrade it into three modules on one row and one module on the next.
-
-#### 3.5.7 Evaluation Criteria
-
-Blur the page content and inspect only the module boundaries and large-scale structure.
-
-A compliant page makes all of the following immediately recognizable:
-
-* The main View.
-* The current primary module.
-* Supporting modules.
-* The relationships between modules.
-* The entry point for page actions.
-
-If the blurred page contains many similarly sized rectangles at the same hierarchy level, the page has too many modules or its module boundaries are out of control.
-
-#### 3.5.8 Module Page Contracts
-
-Module pages use a small number of stable layout contracts:
+Recommended layout contracts:
 
 | Layout | Purpose |
 | --- | --- |
 | `PageShell` | Root container for all module pages |
-| `MainView` | Contains exactly 1, 2, or 4 modules |
-| `MainSplit` | Two-module layout with a primary workspace and supporting detail or metadata |
-| `QuadView` | Complete `2 x 2` four-module layout |
-| `ObjectList` | Ledgers, files, calendar events, or note lists within a module |
-| `DetailView` | Immutable object details within a module |
-| `ActionBar` | `RETURN` / `CREATE` / `SAVE` / `DELETE` / `VOID` within the relevant module |
-| `PaginationBar` | List pagination within a module |
+| `TopStatsGrid` | Top status cards, summary, and metadata |
+| `MainSplit` | Left main workspace, right detail / summary |
+| `ObjectList` | Ledgers, files, calendar events, note lists |
+| `DetailView` | Immutable object details |
+| `ActionBar` | `RETURN` / `CREATE` / `SAVE` / `DELETE` / `VOID` |
+| `PaginationBar` | List pagination |
 
-Recommended structural rules:
+Recommended structural tokens:
 
 ```css
 .ui-page {
   padding: var(--page-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
 }
 
-.ui-main-view {
+.ui-top-grid {
   display: grid;
-  gap: var(--module-gap);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--section-gap);
 }
 
-.ui-main-view--two {
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-}
-
-.ui-main-view--four {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.ui-main-split {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: var(--section-gap);
 }
 
 .ui-bottom-bar {
@@ -440,19 +247,14 @@ Recommended structural rules:
 }
 ```
 
-Rules:
+Page typography rules:
 
-* The title area is followed by exactly `16px` before the main View.
-* The main View contains one, two, or four modules and uses a `16px` gap throughout.
-* A two-module layout may be equal-width or use a clear primary-secondary ratio, but it cannot gain a third column.
-* A four-module layout remains a complete `2 x 2` grid.
-* Page-level actions belong to the relevant module and should be placed at the bottom right of its content area when practical. Dangerous and regular operations maintain clear separation.
-* List pagination uses a unified `PaginationBar` within the relevant module rather than a separate competing page-level module.
-* Mobile layouts may collapse to one column, but module order, hierarchy, font sizes, control heights, and spacing tokens remain stable.
-
-In summary:
-
-> SATURN modules should be compact and direct like engineering tools. A fixed 16px gap establishes rhythm between modules. The main View permits only 1, 2, or 4 modules, and three modules may never be placed side by side.
+* Module pages prioritize the organization of "top summary / metadata, middle main workspace, bottom list / pagination / actions".
+* Top status cards default to three columns; if there is insufficient content, columns can be reduced, but do not change the internal density of the cards.
+* The main workspace prioritizes a left-right split: the left carries lists, editors, or main views, and the right carries details, summaries, or metadata.
+* Page-level action buttons are placed at the bottom right of the content area; dangerous operations and regular operations maintain clear spacing.
+* List pagination uses a unified `PaginationBar`, not writing different positions and sizes manually in each module.
+* Mobile can downgrade to a single column, but font sizes, control heights, and spacing tokens are not redefined.
 
 ## 4. Layout Model
 
