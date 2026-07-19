@@ -2,13 +2,13 @@
 
 ## Status
 
-Accepted for repository SQL implementation work.
+Accepted for repository SQL implementation work. Decision 0004 supersedes only this decision's application schema-bootstrap ownership.
 
 ## Context
 
 Saturn uses PostgreSQL through Go `database/sql` and `github.com/jackc/pgx/v5/stdlib`. The initial repository bootstrap placed the first executable SQL statements in `internal/platform/auth/repo.go`, while most business module repositories still describe boundaries without implemented database behavior.
 
-The project rules assign business SQL to the module that owns the records. `internal/platform/db` owns database connections, transactions, and schema bootstrap; it must not become a shared home for vertical module queries.
+The project rules assign business SQL to the module that owns the records. `internal/platform/db` owns runtime database connections and transactions; it must not become a shared home for vertical module queries. PostgreSQL container bootstrap is defined by decision 0004.
 
 ## Decision
 
@@ -23,7 +23,7 @@ each owning module keeps generated Go query code in its own sqlc/ subpackage
 generated sqlc code is committed and is not edited by hand
 repo.go remains the domain-facing adapter and maps generated rows to module models
 services depend on repository interfaces, not generated sqlc packages
-internal/platform/db remains limited to connections, transactions, and migrations
+internal/platform/db remains limited to runtime connections and transactions
 modules add query and generated-code directories only for implemented persistence or an existing repository contract backed by migrations
 generated templates do not make an unfinished service, route, or repository adapter available at runtime
 ```

@@ -74,7 +74,7 @@ Reference codes do not replace database primary keys and do not bypass business 
 
 Saturn is built as a Go modular monolith.
 
-Each business module owns its own model, service, repository, handler, and API contract. `internal/app` wires dependencies and registers routes. `internal/platform` provides shared infrastructure such as authentication, audit logging, configuration, database bootstrap, object references, search, storage, Redis integration, and HTTP helpers.
+Each business module owns its own model, service, repository, handler, and API contract. `internal/app` wires dependencies and registers routes. `internal/platform` provides shared infrastructure such as authentication, audit logging, configuration, runtime database connections, object references, search, storage, Redis integration, and HTTP helpers.
 
 This structure keeps the project deployable as a single application while preserving clear module boundaries inside the codebase.
 
@@ -135,12 +135,6 @@ scripts/                 development helper scripts
 docker compose up --build
 ```
 
-If you want a one-command startup without cloning the repository first, run:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
-```
-
 Or use the development helper script:
 
 ```sh
@@ -178,9 +172,11 @@ password: admin
 
 The login page only asks for the password. The default account and default password are for local development only. `docker/config.json` keeps a development JWT secret template, and if `config.json` is missing on first startup Saturn generates a new config file with a random `auth.jwt_secret`. All of them must be changed or replaced before any real deployment.
 
+For a new empty PostgreSQL volume, the database container applies every migration before accepting normal connections. Schema objects are owned by the non-login `saturn_owner` role. The application connects only as `saturn`, which has no DDL, owner-role membership, trigger-disable, `BYPASSRLS`, audit mutation, or privileges on unused tables.
+
 ### Run the Go Server Directly
 
-When running on the host machine, PostgreSQL and Redis must be available first.
+When running on the host machine, PostgreSQL and Redis must be available first, and PostgreSQL must already contain the complete Saturn schema with the owner/runtime role split. The Go process does not execute migrations.
 
 ```sh
 go run ./cmd/server
@@ -217,7 +213,7 @@ Main configuration sections:
 | ---------- | ------------------------------------------------------ |
 | `http`     | HTTP listen address and trusted proxy CIDRs            |
 | `web`      | Static frontend root                                   |
-| `database` | PostgreSQL URL and development schema rebuild switch   |
+| `database` | PostgreSQL runtime-role URL                            |
 | `redis`    | Redis address, currently required mainly for sessions  |
 | `auth`     | JWT secret and token TTL                               |
 | `storage`  | Local object storage root                              |
@@ -253,6 +249,12 @@ Run all Go tests:
 go test ./...
 ```
 
+Verify first-run PostgreSQL migrations and least-privilege runtime grants in a disposable container:
+
+```sh
+sh scripts/test-postgres-bootstrap.sh
+```
+
 Regenerate `sqlc` code after changing `queries/*.sql`, `sqlc.yaml`, or related schema:
 
 ```sh
@@ -279,7 +281,7 @@ go run github.com/arch-go/arch-go/v2 --color no
 
 ## CI/CD and Container Images
 
-GitHub Actions runs generated-code checks, formatting, `go vet`, architecture checks, Go tests, and a Docker build.
+GitHub Actions runs generated-code checks, formatting, `go vet`, architecture checks, Go tests, the disposable PostgreSQL bootstrap/permission regression, and a Docker build.
 
 Pull requests validate the image build. Every successful push to `main` publishes a multi-platform container image with `latest` and immutable `sha-<commit>` tags.
 
@@ -439,7 +441,7 @@ LLM-00000005
 
 Saturn 是一个 Go modular monolith。
 
-每个业务模块拥有自己的 model、service、repository、handler 和 API 契约。`internal/app` 负责依赖装配和路由注册。`internal/platform` 提供共享基础能力，例如认证、审计日志、配置、数据库初始化、对象引用、搜索、存储、Redis 集成和 HTTP helper。
+每个业务模块拥有自己的 model、service、repository、handler 和 API 契约。`internal/app` 负责依赖装配和路由注册。`internal/platform` 提供共享基础能力，例如认证、审计日志、配置、运行时数据库连接、对象引用、搜索、存储、Redis 集成和 HTTP helper。
 
 这种结构让项目可以作为单个应用部署，同时在代码层面保留清晰的模块边界。
 
@@ -500,12 +502,6 @@ scripts/                 development helper scripts
 docker compose up --build
 ```
 
-如果你想在不先克隆仓库的情况下直接一键启动，可以运行：
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/stark-lin/saturn/main/docker-compose.yml | docker compose -f - up -d
-```
-
 也可以使用开发辅助脚本：
 
 ```sh
@@ -543,9 +539,11 @@ password: admin
 
 登录页只需要输入密码。默认账号和默认密码只适合本地开发。`docker/config.json` 保留的是开发用 JWT secret 模板；如果首次启动时缺少 `config.json`，Saturn 会生成一个包含随机 `auth.jwt_secret` 的新配置文件。真实部署前，这些内容都必须替换。
 
+对于新的空 PostgreSQL volume，数据库容器会在接受正常连接前执行全部 migration。schema 对象由不可登录的 `saturn_owner` 持有；应用只使用 `saturn` 运行账号，它没有 DDL、owner role membership、trigger-disable、`BYPASSRLS`、审计修改权限，也没有未启用表的权限。
+
 ### 直接运行 Go Server
 
-在宿主机直接运行时，需要先准备 PostgreSQL 和 Redis。
+在宿主机直接运行时，需要先准备 PostgreSQL 和 Redis，并预先创建完整 Saturn schema 及 owner/runtime role 分离。Go 进程本身不会执行 migration。
 
 ```sh
 go run ./cmd/server
@@ -582,7 +580,7 @@ config.json
 | ---------- | ------------------------------------------- |
 | `http`     | HTTP 监听地址和可信代理 CIDR                         |
 | `web`      | 静态前端根目录                                     |
-| `database` | PostgreSQL URL 和开发 schema 重建开关              |
+| `database` | PostgreSQL 运行账号 URL                          |
 | `redis`    | Redis 地址，当前主要用于 session                     |
 | `auth`     | JWT secret 和 token TTL                      |
 | `storage`  | 本地对象存储根目录                                   |
@@ -618,6 +616,12 @@ config.json
 go test ./...
 ```
 
+在一次性 PostgreSQL 容器中验证首次 migration 和最小权限授权：
+
+```sh
+sh scripts/test-postgres-bootstrap.sh
+```
+
 修改 `queries/*.sql`、`sqlc.yaml` 或相关 schema 后，重新生成 `sqlc` 代码：
 
 ```sh
@@ -644,7 +648,7 @@ go run github.com/arch-go/arch-go/v2 --color no
 
 ## CI/CD 和容器镜像
 
-GitHub Actions 会运行 generated-code check、formatting、`go vet`、architecture check、Go tests 和 Docker build。
+GitHub Actions 会运行 generated-code check、formatting、`go vet`、architecture check、Go tests、一次性 PostgreSQL bootstrap/permission 回归和 Docker build。
 
 Pull request 会验证镜像构建。每次成功 push 到 `main` 后，会发布 multi-platform container image，包含 `latest` 和不可变的 `sha-<commit>` tags。
 

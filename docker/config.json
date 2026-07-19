@@ -10,8 +10,7 @@
     "readiness_timeout_seconds": 30
   },
   "database": {
-    "url": "postgres://saturn:saturn@postgres:5432/saturn?sslmode=disable",
-    "drop_tables": false
+    "url": "postgres://saturn:saturn@postgres:5432/saturn?sslmode=disable"
   },
   "redis": {
     "addr": "redis:6379"

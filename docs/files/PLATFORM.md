@@ -214,7 +214,6 @@ Configuration validation stays local to `platform/config` until a real shared va
 ```text
 internal/platform/db
 ├── db.go
-├── migrate.go
 └── tx.go
 ```
 
@@ -222,7 +221,6 @@ Responsibilities:
 
 ```text
 Database connection
-Migration execution
 Transaction encapsulation
 ```
 

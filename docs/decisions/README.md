@@ -17,4 +17,5 @@ Do not put ordinary implementation notes or to-do items into decisions
 0001-initial-code-inventory.md
 0002-sqlc-query-generation.md
 0003-gin-http-router.md
+0004-postgresql-container-bootstrap-and-runtime-role.md
 ```

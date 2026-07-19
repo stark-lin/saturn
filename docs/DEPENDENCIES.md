@@ -76,7 +76,7 @@ Backend PostgreSQL access uses Go `database/sql` with:
 github.com/jackc/pgx/v5/stdlib
 ```
 
-Business modules must not import the PostgreSQL driver directly; database connections, transactions, and schema bootstrap are encapsulated by `internal/platform/db`.
+Business modules must not import the PostgreSQL driver directly; runtime database connections and transactions are encapsulated by `internal/platform/db`. Schema bootstrap belongs to the PostgreSQL container initialization boundary, not the Go process.
 
 Implemented repository SQL and persisted query templates for existing repository contracts use the following fixed-version development tool to generate type-safe calling code:
 
@@ -132,13 +132,12 @@ Database configuration is located in the `database` section:
 ```json
 {
   "database": {
-    "url": "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable",
-    "drop_tables": false
+    "url": "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable"
   }
 }
 ```
 
-`database.drop_tables` defaults to `false`. When starting with an empty database, migrations are executed to initialize the schema; if a complete Saturn schema already exists, data is preserved and recreation is skipped; only when set to `true` will startup first drop all regular tables under the current PostgreSQL schema before recreating them. This option is only suitable for local development databases.
+The configured URL must use the least-privilege `saturn` runtime role. Runtime configuration has no migration URL and no drop/rebuild switch; the Go process cannot create, alter, or drop the schema.
 
 Startup dependency readiness is configured in the `startup` section:
 
@@ -150,7 +149,7 @@ Startup dependency readiness is configured in the `startup` section:
 }
 ```
 
-At process startup, PostgreSQL and Redis readiness checks run concurrently. The main startup flow blocks until both are ready, then runs migrations, wires services, and only then starts the HTTP server and workers. If either dependency remains unavailable past `startup.readiness_timeout_seconds`, startup fails fast without entering a degraded mode.
+At process startup, PostgreSQL and Redis readiness checks run concurrently. The main startup flow blocks until both are ready, then wires services using the already initialized schema and starts the HTTP server and workers. If either dependency remains unavailable past `startup.readiness_timeout_seconds`, startup fails fast without entering a degraded mode.
 
 Authentication configuration includes the administrator JWT signature secret and token validity in minutes. Saturn access API keys are generated at runtime and persisted only as SHA-256 digests in PostgreSQL; they have no configuration-file secret. The repository template and Docker development config still use a development JWT secret, but when `config.json` does not exist the startup path generates a random `auth.jwt_secret` and writes it to disk. Existing config files must provide `auth.jwt_secret` and `auth.token_ttl_minutes` explicitly.
 
@@ -178,7 +177,6 @@ Environment variables are only used for the initial generation of the config fil
 You can use the following when generating the config file for the first time:
 
 ```text
-SATURN_DATABASE_DROP_TABLES
 SATURN_STARTUP_READINESS_TIMEOUT_SECONDS
 SATURN_LLM_ENABLED
 SATURN_LLM_API_KEY
@@ -202,18 +200,7 @@ The default development configuration uses:
 postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable
 ```
 
-When using local PostgreSQL for the first time, the corresponding role and database must exist. They can be created in `psql` by the PostgreSQL superuser:
-
-```sql
-CREATE ROLE saturn WITH LOGIN PASSWORD 'saturn';
-CREATE DATABASE saturn OWNER saturn;
-```
-
-If you want to run real PostgreSQL integration tests for `internal/platform/db`, a separate test database is also required:
-
-```sql
-CREATE DATABASE saturn_test OWNER saturn;
-```
+When using local PostgreSQL instead of Compose, provision the complete schema and the `saturn_owner` / `saturn` split with a privileged migration process before starting Go. Do not make `saturn` the database or table owner. The Compose initialization under `docker/postgres/` is the authoritative executable example.
 
 If the local PostgreSQL uses passwordless login for the current macOS user, you can set `SATURN_DATABASE_URL` before generating `config.json` for the first time, or directly modify the uncommitted local `config.json`.
 

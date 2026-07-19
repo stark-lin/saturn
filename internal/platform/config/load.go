@@ -62,8 +62,7 @@ func Default() Config {
 			ReadinessTimeoutSeconds: defaultReadinessTimeoutSeconds,
 		},
 		Database: DatabaseConfig{
-			URL:        "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable",
-			DropTables: false,
+			URL: "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable",
 		},
 		Redis: RedisConfig{
 			Addr: "127.0.0.1:6379",
@@ -161,13 +160,6 @@ func applyEnvironment(cfg *Config) error {
 	setString("SATURN_LLM_MODEL", &cfg.LLM.Model)
 	setString("SATURN_LOG_LEVEL", &cfg.Logging.Level)
 
-	if value := os.Getenv("SATURN_DATABASE_DROP_TABLES"); value != "" {
-		parsed, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("parse SATURN_DATABASE_DROP_TABLES: %w", err)
-		}
-		cfg.Database.DropTables = parsed
-	}
 	if value := os.Getenv("SATURN_STARTUP_READINESS_TIMEOUT_SECONDS"); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil {

@@ -18,10 +18,14 @@ services:
       - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: saturn
-      POSTGRES_USER: saturn
-      POSTGRES_PASSWORD: saturn
+      POSTGRES_USER: saturn_bootstrap
+      POSTGRES_PASSWORD: saturn-bootstrap
+      SATURN_DATABASE_PASSWORD: saturn
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/opt/saturn/migrations:ro
+      - ./docker/postgres:/opt/saturn/postgres:ro
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/010_saturn.sh:ro
 
   redis:
     image: redis:8-alpine

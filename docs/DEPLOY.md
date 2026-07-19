@@ -27,13 +27,27 @@ bound to loopback only; the application remains published on port `8080`.
 
 `docker-compose.yml` uses `depends_on` for container startup order only. Dependency readiness is enforced by the application startup wait described below, so the app container may start before PostgreSQL or Redis accepts connections, then block until both are ready or the configured readiness timeout expires.
 
+On an empty `postgres-data` volume, the official PostgreSQL entrypoint creates the `POSTGRES_USER` bootstrap login and then sources `docker/postgres/init.sh`. The script creates the owner/runtime roles, switches to the non-login schema owner, applies every `migrations/*.sql` file in lexical order, installs the runtime grants from `docker/postgres/runtime_grants.sql`, and commits the entire operation as one transaction. PostgreSQL only runs `/docker-entrypoint-initdb.d` for an empty data directory; recreating a container with an existing volume preserves the schema and data and does not rerun migrations.
+
+The three database identities are deliberately separate:
+
+| Role | Login | Purpose |
+| --- | --- | --- |
+| `saturn_bootstrap` | yes, Compose initialization only | PostgreSQL image bootstrap superuser; never provided to the app |
+| `saturn_owner` | no | Owns the database, `public` schema, tables, sequences, types, functions, and triggers |
+| `saturn` | yes | Application runtime role with explicit query-level grants only |
+
+The committed passwords are development-only Compose defaults. A real deployment must supply independent secrets for bootstrap and runtime connections and must expose only the runtime connection to the Saturn process.
+
 Files default to using the local filesystem runtime backend. The Docker development environment mounts `/app/objects` to the `objects-data` volume; local development defaults to writing to `./objects`.
 
 Application runtime configuration defaults to coming from `config.json`, or it can be specified via the `-config path/to/config.json` path. If `config.json` is missing during local development, the service will generate a local configuration file using built-in defaults and current `SATURN_*` environment variables upon startup; once generated, environment variables will no longer overwrite existing configurations.
 
 `startup.readiness_timeout_seconds` defaults to `30`. During startup the application waits for PostgreSQL and Redis concurrently, but the main startup flow blocks until both dependencies are ready. The wait is bounded by this timeout; if either dependency is still unavailable when the timeout expires, startup fails fast and the HTTP server and workers are not started.
 
-`database.drop_tables` defaults to `false`. When the service starts, if the target database has no Saturn tables, it will execute `migrations/*.sql` to initialize the schema; if the target database already contains the complete set of Saturn tables, it will retain the existing data and skip recreation; if only partial Saturn tables exist, it will fail fast, requiring a switch to an empty database or explicitly setting `database.drop_tables=true`. When set to `true`, startup will first drop all regular tables under the current PostgreSQL schema, and then execute migrations to rebuild the development schema.
+Saturn application startup never executes migrations, drops tables, or uses a schema-owner connection. It only waits for PostgreSQL and Redis, opens the runtime connection, bootstraps the singleton development administrator through normal DML when absent, wires services, and starts the HTTP server and workers. An empty or incomplete database therefore fails through normal repository initialization instead of being modified by the application.
+
+The removed `database.drop_tables` key is no longer valid configuration. Because existing JSON files reject unknown fields, delete that key when upgrading a local configuration.
 
 The repository commits `config.example.json` as a local configuration template; the real `config.json` is not committed. The Docker image uses `docker/config.json` copied to `/app/config.json`, and starts via `-config /app/config.json`.
 
@@ -56,9 +70,7 @@ Do not configure the public internet or arbitrary source subnets as trusted prox
 
 The development configuration provides a default JWT secret and bootstraps the singleton administrator with password `admin` after schema creation. Bootstrap claims the administrator's `USR-*` RefCode from the global ObjectRef sequence and registers it with the `SYS` owner; on a clean schema this is normally `USR-00000001`. If `/app/config.json` is absent on startup, Saturn generates one with a random JWT secret and writes it to disk; production deployments should mount a persistent config at that path rather than relying on regeneration. The JWT secret and default administrator password must be replaced prior to actual deployment. Create programmatic credentials from the settings API-key page after login; never place issued `sat_sk_*` values in committed configuration.
 
-During the development phase, when the application starts, it will automatically execute `migrations/*.sql` to initialize the PostgreSQL schema. Formal migration version tables and production-style incremental upgrades are not implemented. Existing databases created before system-owned `USR` / `KEY` ObjectRef claims must be rebuilt with `database.drop_tables=true` (or replaced with an empty development database) before running this version; do not enable that option against valuable data.
-
-The NTE object-model upgrade adds the required `note_versions` table in `000015_notes_version_objects.sql`. A development database created before this migration is detected as incomplete and must be rebuilt with `database.drop_tables=true` under the current bootstrap policy. The migration includes legacy Note-to-v1 backfill SQL for controlled/manual migration use, but normal startup does not incrementally apply it to an already complete older schema.
+Formal migration version tracking and in-place production upgrades are not implemented. Adding a migration changes the schema created for new empty PostgreSQL volumes, but does not mutate an existing volume. Rebuild a development database by first backing up any needed data and then deliberately replacing only the PostgreSQL data volume; never remove the shared object-storage volume as an accidental side effect. Valuable or production data requires a separately reviewed migration run using a privileged migration identity, never the `saturn` runtime role.
 
 ---
 
@@ -70,11 +82,11 @@ The pipeline has the following behavior:
 
 | Event | Checks | Container result |
 | --- | --- | --- |
-| Pull request | sqlc generated code, formatting, `go vet`, architecture rules, and all Go tests | Build the current-platform image without publishing it |
-| Push to `main` | Same quality checks | Publish multi-platform `latest` and `sha-<commit>` images |
-| Manual dispatch | Same quality checks | Build the current-platform image without publishing it |
+| Pull request | sqlc generated code, formatting, `go vet`, architecture rules, all Go tests, and disposable PostgreSQL bootstrap/permission verification | Build the current-platform image without publishing it |
+| Push to `main` | Same quality and PostgreSQL checks | Publish multi-platform `latest` and `sha-<commit>` images |
+| Manual dispatch | Same quality and PostgreSQL checks | Build the current-platform image without publishing it |
 
-Container publishing only starts after the quality job succeeds. Published images support `linux/amd64` and `linux/arm64`, include an SBOM, and receive a GitHub artifact provenance attestation.
+Container publishing only starts after the quality and PostgreSQL bootstrap jobs succeed. The database job runs `scripts/test-postgres-bootstrap.sh` against a disposable PostgreSQL 17 container and verifies the complete schema, owner/runtime role attributes, exact audit permissions, trigger enforcement, and rejected bypass attempts. Published application images support `linux/amd64` and `linux/arm64`, include an SBOM, and receive a GitHub artifact provenance attestation.
 
 The target registry and image name are:
 
@@ -98,7 +110,7 @@ docker pull ghcr.io/stark-lin/saturn:sha-<full-commit-sha>
 
 The workflow triggers on all pushes to `main`; use GitHub branch protection to require pull requests if only merged changes should be publishable.
 
-The published image contains `docker/config.json` only as a development default. A real deployment must mount a production configuration at `/app/config.json`, replace the development JWT secret and administrator credentials, keep `database.drop_tables=false`, and use database and Redis addresses reachable from inside the container. For example:
+The published application image contains `docker/config.json` only as a development default and does not contain or execute schema migrations. A real deployment must provision PostgreSQL separately with an owner/migration identity, grant a distinct runtime identity, mount a production configuration at `/app/config.json`, replace the development JWT secret and administrator credentials, and use database and Redis addresses reachable from inside the container. For example:
 
 ```sh
 docker run --rm \

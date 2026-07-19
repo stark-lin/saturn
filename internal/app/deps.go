@@ -18,8 +18,6 @@ import (
 	"github.com/stark-lin/saturn/internal/platform/ref"
 )
 
-const migrationsDir = "migrations"
-
 type Dependencies struct {
 	Config     config.Config
 	Database   *platformdb.Handle
@@ -47,11 +45,6 @@ func LoadDependencies(ctx context.Context, configPath string) (Dependencies, err
 	database := readyDependencies.Database
 	redisClient := readyDependencies.Redis
 
-	if err := platformdb.BootstrapSchema(ctx, database.DB, migrationsDir, platformdb.BootstrapOptions{DropTables: cfg.Database.DropTables}); err != nil {
-		_ = redisClient.Close()
-		_ = database.Close()
-		return Dependencies{}, fmt.Errorf("bootstrap database schema: %w", err)
-	}
 	authRepo := auth.NewSQLRepository(database.DB)
 	transactionRunner := platformdb.SQLTransactionRunner{DB: database.DB}
 	referenceService := ref.NewService(ref.NewSQLRepository(database.DB))

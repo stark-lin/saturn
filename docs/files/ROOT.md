@@ -72,6 +72,12 @@ This project adopts a Go modular monolith backend and a `web/src` frontend sourc
 │   └── prd
 ├── scripts
 ├── docker
+│   ├── config.json
+│   └── postgres
+│       ├── init.sh
+│       ├── runtime_grants.sql
+│       ├── verify_bootstrap.sql
+│       └── verify_runtime_access.sql
 ├── .env.example
 ├── config.example.json
 ├── AGENTS.md
@@ -280,6 +286,8 @@ Migration files increment numerically
 One migration file corresponds to one explicit subject
 Modifying migration files that have already been merged into the main branch and released is prohibited
 All schema changes must be done through migrations
+An empty Compose PostgreSQL volume executes all migration files in lexical order through docker/postgres/init.sh
+Every migration or repository SQL permission change must update docker/postgres/runtime_grants.sql when required
 ```
 
 Naming format:
@@ -341,6 +349,7 @@ Rules:
 Scripts must be runnable repeatedly or clearly state their side effects
 Scripts must not bypass application services to directly modify business data, unless it is explicitly a data migration or repair script
 Scripts involving dangerous operations must default to dry-run or require explicit confirmation parameters
+The PostgreSQL bootstrap regression is run with `sh scripts/test-postgres-bootstrap.sh`
 ```
 
 ---
@@ -363,6 +372,8 @@ docker-compose.yml defines the development default running topology
 config.example.json provides the local JSON configuration template
 .env.example provides optional environment variable examples for first-time config.json generation
 docker/ stores Docker-related configuration, initialization scripts, and service configurations
+docker/postgres/init.sh owns first-run role creation and ordered migration execution for an empty PostgreSQL volume
+docker/postgres/runtime_grants.sql is the authoritative runtime database grant list
 ```
 
 Rules:

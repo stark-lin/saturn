@@ -81,3 +81,21 @@ end the current browser session
 ```
 
 It does not own privileged business paths or bypass module services.
+
+## 7. PostgreSQL Execution Roles
+
+Database authorization is independent from administrator/API-key product authorization. PostgreSQL uses three identities:
+
+```text
+saturn_bootstrap  PostgreSQL container initialization superuser
+saturn_owner      NOLOGIN owner of Saturn database objects
+saturn            LOGIN application runtime role
+```
+
+The runtime role is explicitly `NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`. It is not a member of `saturn_owner`, has `CONNECT` on the database and `USAGE` on the `public` schema, but has neither database/schema `CREATE` nor database `TEMP`. Tables, sequences, types, functions, and triggers remain owned by `saturn_owner`.
+
+Runtime grants are defined in `docker/postgres/runtime_grants.sql` from the SQL statements used by current repositories. Read access is limited to active runtime tables. Inserts and updates use column-level grants; deletes exist only where current services physically delete a root object or storage metadata. Tables for unimplemented capabilities receive no runtime privileges.
+
+`audit_logs` grants `SELECT` plus column-scoped `INSERT` only. It grants no `UPDATE`, `DELETE`, or `TRUNCATE`. Trigger functions are not directly executable by `saturn`. Because `saturn` owns no tables and cannot become the owner role, it cannot disable triggers; its role attributes also prevent changing `session_replication_role` to bypass them. Database triggers remain a second enforcement layer for allowed update columns such as API-key lifecycle timestamps and business status transitions.
+
+Every new repository SQL statement or migration must update and re-verify the grant list. `scripts/test-postgres-bootstrap.sh` runs the full first-boot path against disposable PostgreSQL 17 and asserts the role, ownership, audit, column grant, trigger, and bypass boundaries.

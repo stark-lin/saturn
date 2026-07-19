@@ -27,8 +27,7 @@ type StartupConfig struct {
 }
 
 type DatabaseConfig struct {
-	URL        string `json:"url"`
-	DropTables bool   `json:"drop_tables"`
+	URL string `json:"url"`
 }
 
 type RedisConfig struct {

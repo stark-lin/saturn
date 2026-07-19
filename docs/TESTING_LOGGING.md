@@ -233,15 +233,15 @@ go test ./internal/notes -run TestServiceCreateNote
 
 If tests depend on PostgreSQL, Redis, a local FS storage directory, or other infrastructure and are unavailable locally, explain the reason for skipping. Do not silently turn infrastructure-dependent failures into passes.
 
-`internal/platform/db` PostgreSQL integration tests must be explicitly enabled using a test database connection string:
+PostgreSQL schema and permission changes must run the disposable-container bootstrap regression:
 
 ```sh
-SATURN_TEST_DATABASE_URL='postgres://saturn:saturn@localhost:5432/saturn_test?sslmode=disable' go test ./internal/platform/db
+sh scripts/test-postgres-bootstrap.sh
 ```
 
-This test will perform development-phase schema bootstrapping and may drop and recreate known tables in the test database. Do not point it to the local development database or any database with valuable data. When `SATURN_TEST_DATABASE_URL` is not set, PostgreSQL integration tests should `t.Skip` and explain the reason.
+The script uses an automatically removed PostgreSQL 17 container with a tmpfs data directory. It applies all migrations through the real image-entrypoint initialization path, validates owner/runtime roles and grants, performs allowed audit/API-key operations, and proves that audit mutation, trigger disabling, `session_replication_role`, and owner-role assumption are rejected.
 
-`internal/platform/auth` generated query integration tests also use `SATURN_TEST_DATABASE_URL`, but create temporary `users` tables within the current connection without wiping the persistent test schema. This allows proving repository SQL behavior separately from schema bootstrap tests.
+`internal/platform/auth` generated query integration tests use `SATURN_TEST_DATABASE_URL` and create temporary `users` tables within the current connection without wiping a persistent schema. This separately proves repository SQL behavior.
 
 ### 2.9 Prohibitions
 

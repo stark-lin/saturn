@@ -12,7 +12,6 @@ FROM alpine:3.21
 WORKDIR /app
 COPY --from=build /out/saturn /app/saturn
 COPY docker/config.json /app/config.json
-COPY migrations /app/migrations
 COPY web/src /app/web/src
 EXPOSE 8080
 CMD ["/app/saturn", "-config", "/app/config.json"]

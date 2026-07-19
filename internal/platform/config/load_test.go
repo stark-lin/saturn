@@ -12,7 +12,6 @@ import (
 func TestLoadGeneratesConfigFromEnvironment(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("SATURN_HTTP_ADDR", ":9090")
-	t.Setenv("SATURN_DATABASE_DROP_TABLES", "true")
 	t.Setenv("SATURN_STARTUP_READINESS_TIMEOUT_SECONDS", "12")
 	t.Setenv("SATURN_STORAGE_ROOT", filepath.Join(t.TempDir(), "objects"))
 	t.Setenv("SATURN_LLM_WORKER_COUNT", "3")
@@ -29,9 +28,6 @@ func TestLoadGeneratesConfigFromEnvironment(t *testing.T) {
 	}
 	if cfg.Database.URL != "postgres://saturn:saturn@localhost:5432/saturn?sslmode=disable" {
 		t.Fatalf("expected default database url, got %q", cfg.Database.URL)
-	}
-	if !cfg.Database.DropTables {
-		t.Fatal("expected env database drop tables to be true")
 	}
 	if cfg.Startup.ReadinessTimeoutSeconds != 12 {
 		t.Fatalf("expected env startup readiness timeout, got %d", cfg.Startup.ReadinessTimeoutSeconds)
@@ -79,7 +75,7 @@ func TestLoadExistingConfigIgnoresEnvironment(t *testing.T) {
   "http": { "addr": ":7070" },
   "web": { "root": "web/custom" },
   "startup": { "readiness_timeout_seconds": 17 },
-  "database": { "url": "postgres://file", "drop_tables": true },
+  "database": { "url": "postgres://file" },
   "redis": { "addr": "file-redis:6379" },
   "auth": {
     "jwt_secret": "file-secret-for-auth",
@@ -105,9 +101,6 @@ func TestLoadExistingConfigIgnoresEnvironment(t *testing.T) {
 	if cfg.Storage.Root != "file-objects" {
 		t.Fatalf("expected file storage root, got %q", cfg.Storage.Root)
 	}
-	if !cfg.Database.DropTables {
-		t.Fatal("expected file database drop tables to be true")
-	}
 	if cfg.Startup.ReadinessTimeoutSeconds != 17 {
 		t.Fatalf("expected file startup readiness timeout, got %d", cfg.Startup.ReadinessTimeoutSeconds)
 	}
@@ -121,7 +114,7 @@ func TestLoadExistingConfigDefaultsStartupReadinessTimeout(t *testing.T) {
 	content := `{
   "http": { "addr": ":7070" },
   "web": { "root": "web/custom" },
-  "database": { "url": "postgres://file", "drop_tables": true },
+  "database": { "url": "postgres://file" },
   "redis": { "addr": "file-redis:6379" },
   "auth": {
     "jwt_secret": "file-secret-for-auth",
